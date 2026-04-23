@@ -1,0 +1,57 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate .uplugin JSON
+        run: |
+          for f in $(find . -name '*.uplugin'); do
+            echo "Checking $f"
+            python3 -c "import json,sys; json.load(open('$f'))" || exit 1
+          done
+
+      - name: Check every public header has a private .cpp
+        run: |
+          missing=0
+          for h in Source/AsobiSDK/Public/*.h; do
+            base=$(basename "$h" .h)
+            # Skip pure type-only headers
+            if [ "$base" = "AsobiTypes" ]; then continue; fi
+            cpp="Source/AsobiSDK/Private/${base}.cpp"
+            if [ ! -f "$cpp" ]; then
+              echo "Missing implementation: $cpp (for $h)"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Check UCLASS/USTRUCT have GENERATED_BODY
+        run: |
+          fail=0
+          for f in $(find Source -name '*.h'); do
+            uc=$(grep -cE '^(UCLASS|USTRUCT)\(' "$f" || true)
+            gb=$(grep -cE 'GENERATED_BODY\(\)' "$f" || true)
+            if [ "$uc" -gt "$gb" ]; then
+              echo "$f: UCLASS/USTRUCT count ($uc) exceeds GENERATED_BODY count ($gb)"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Check Build.cs files are not empty
+        run: |
+          for f in $(find Source -name '*.Build.cs'); do
+            if [ ! -s "$f" ]; then
+              echo "Empty Build.cs: $f"
+              exit 1
+            fi
+            grep -q "ModuleRules" "$f" || { echo "$f missing ModuleRules"; exit 1; }
+          done

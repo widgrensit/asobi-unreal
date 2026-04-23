@@ -396,3 +396,65 @@ FAsobiVote UAsobiClient::ParseVote(const TSharedPtr<FJsonObject>& Json)
 	V.InsertedAt = GetStr(Json, TEXT("inserted_at"));
 	return V;
 }
+
+FAsobiWorldInfo UAsobiClient::ParseWorldInfo(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiWorldInfo W;
+	if (!Json.IsValid()) return W;
+	W.WorldId = GetStr(Json, TEXT("world_id"));
+	W.Status = GetStr(Json, TEXT("status"));
+	W.Mode = GetStr(Json, TEXT("mode"));
+	W.PlayerCount = GetInt(Json, TEXT("player_count"));
+	W.MaxPlayers = GetInt(Json, TEXT("max_players"));
+	W.GridSize = GetInt(Json, TEXT("grid_size"));
+	W.StartedAt = GetInt64(Json, TEXT("started_at"));
+
+	const TArray<TSharedPtr<FJsonValue>>* PlayersArr;
+	if (Json->TryGetArrayField(TEXT("players"), PlayersArr))
+	{
+		for (const auto& Val : *PlayersArr)
+		{
+			FString Str;
+			if (Val->TryGetString(Str))
+			{
+				W.Players.Add(Str);
+			}
+		}
+	}
+
+	const TSharedPtr<FJsonObject>* PhaseObj;
+	if (Json->TryGetObjectField(TEXT("phase"), PhaseObj) && PhaseObj && PhaseObj->IsValid())
+	{
+		W.PhaseJson = ToJsonString(*PhaseObj);
+	}
+
+	return W;
+}
+
+FAsobiWorldTerrainChunk UAsobiClient::ParseWorldTerrain(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiWorldTerrainChunk T;
+	if (!Json.IsValid()) return T;
+
+	const TArray<TSharedPtr<FJsonValue>>* CoordsArr;
+	if (Json->TryGetArrayField(TEXT("coords"), CoordsArr) && CoordsArr->Num() >= 2)
+	{
+		T.CoordX = static_cast<int32>((*CoordsArr)[0]->AsNumber());
+		T.CoordY = static_cast<int32>((*CoordsArr)[1]->AsNumber());
+	}
+	T.Base64Data = GetStr(Json, TEXT("data"));
+	return T;
+}
+
+FAsobiDirectMessage UAsobiClient::ParseDirectMessage(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiDirectMessage M;
+	if (!Json.IsValid()) return M;
+	M.Id = GetStr(Json, TEXT("id"));
+	M.ChannelId = GetStr(Json, TEXT("channel_id"));
+	M.SenderId = GetStr(Json, TEXT("sender_id"));
+	M.RecipientId = GetStr(Json, TEXT("recipient_id"));
+	M.Content = GetStr(Json, TEXT("content"));
+	M.SentAt = GetStr(Json, TEXT("sent_at"));
+	return M;
+}

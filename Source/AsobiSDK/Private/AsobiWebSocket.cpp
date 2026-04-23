@@ -1,4 +1,5 @@
 #include "AsobiWebSocket.h"
+#include "AsobiClient.h"
 #include "WebSocketsModule.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -157,6 +158,62 @@ void UAsobiWebSocket::UseVeto(const FString& VoteId)
 	Send(TEXT("vote.veto"), Payload);
 }
 
+void UAsobiWebSocket::WorldList(const FString& Mode)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	if (!Mode.IsEmpty())
+	{
+		Payload->SetStringField(TEXT("mode"), Mode);
+	}
+	Send(TEXT("world.list"), Payload);
+}
+
+void UAsobiWebSocket::WorldCreate(const FString& Mode)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	Payload->SetStringField(TEXT("mode"), Mode);
+	Send(TEXT("world.create"), Payload);
+}
+
+void UAsobiWebSocket::WorldFindOrCreate(const FString& Mode)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	Payload->SetStringField(TEXT("mode"), Mode);
+	Send(TEXT("world.find_or_create"), Payload);
+}
+
+void UAsobiWebSocket::WorldJoin(const FString& WorldId)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	Payload->SetStringField(TEXT("world_id"), WorldId);
+	Send(TEXT("world.join"), Payload);
+}
+
+void UAsobiWebSocket::WorldLeave()
+{
+	Send(TEXT("world.leave"), nullptr);
+}
+
+void UAsobiWebSocket::WorldInput(const FString& DataJson)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	TSharedPtr<FJsonObject> DataObj;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(DataJson);
+	if (FJsonSerializer::Deserialize(Reader, DataObj) && DataObj.IsValid())
+	{
+		Payload->SetObjectField(TEXT("data"), DataObj);
+	}
+	Send(TEXT("world.input"), Payload);
+}
+
+void UAsobiWebSocket::DmSend(const FString& RecipientId, const FString& Content)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	Payload->SetStringField(TEXT("recipient_id"), RecipientId);
+	Payload->SetStringField(TEXT("content"), Content);
+	Send(TEXT("dm.send"), Payload);
+}
+
 void UAsobiWebSocket::Send(const FString& Type, const TSharedPtr<FJsonObject>& Payload)
 {
 	if (!WebSocket.IsValid() || !WebSocket->IsConnected())
@@ -293,6 +350,97 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 	else if (Type == TEXT("vote.veto_ok"))
 	{
 		OnVoteVetoOk.Broadcast();
+	}
+	else if (Type == TEXT("world.joined"))
+	{
+		FAsobiWorldInfo Info;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			Info = UAsobiClient::ParseWorldInfo(*PayloadObj);
+		}
+		OnWorldJoined.Broadcast(Info);
+	}
+	else if (Type == TEXT("world.left"))
+	{
+		OnWorldLeft.Broadcast();
+	}
+	else if (Type == TEXT("world.list"))
+	{
+		TArray<FAsobiWorldInfo> Worlds;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Arr;
+			if ((*PayloadObj)->TryGetArrayField(TEXT("worlds"), Arr))
+			{
+				for (const auto& Val : *Arr)
+				{
+					const TSharedPtr<FJsonObject>* Obj;
+					if (Val->TryGetObject(Obj))
+					{
+						Worlds.Add(UAsobiClient::ParseWorldInfo(*Obj));
+					}
+				}
+			}
+		}
+		OnWorldList.Broadcast(Worlds);
+	}
+	else if (Type == TEXT("world.tick"))
+	{
+		int64 Tick = 0;
+		FString UpdatesJson;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			double TickNum = 0;
+			if ((*PayloadObj)->TryGetNumberField(TEXT("tick"), TickNum))
+			{
+				Tick = static_cast<int64>(TickNum);
+			}
+			const TArray<TSharedPtr<FJsonValue>>* UpdatesArr;
+			const TSharedPtr<FJsonObject>* UpdatesObj;
+			if ((*PayloadObj)->TryGetArrayField(TEXT("updates"), UpdatesArr))
+			{
+				TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+					TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&UpdatesJson);
+				FJsonSerializer::Serialize(*UpdatesArr, Writer);
+			}
+			else if ((*PayloadObj)->TryGetObjectField(TEXT("updates"), UpdatesObj))
+			{
+				UpdatesJson = SerializeJson(*UpdatesObj);
+			}
+		}
+		OnWorldTick.Broadcast(Tick, UpdatesJson);
+	}
+	else if (Type == TEXT("world.terrain"))
+	{
+		FAsobiWorldTerrainChunk Chunk;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			Chunk = UAsobiClient::ParseWorldTerrain(*PayloadObj);
+		}
+		OnWorldTerrain.Broadcast(Chunk);
+	}
+	else if (Type.StartsWith(TEXT("world.")))
+	{
+		FString Event = Type.Mid(6);
+		OnWorldEvent.Broadcast(Event, PayloadStr);
+	}
+	else if (Type == TEXT("dm.message"))
+	{
+		FAsobiDirectMessage Msg;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			Msg = UAsobiClient::ParseDirectMessage(*PayloadObj);
+		}
+		OnDmMessage.Broadcast(Msg);
+	}
+	else if (Type == TEXT("dm.sent"))
+	{
+		FString ChannelId;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			(*PayloadObj)->TryGetStringField(TEXT("channel_id"), ChannelId);
+		}
+		OnDmSent.Broadcast(ChannelId);
 	}
 }
 

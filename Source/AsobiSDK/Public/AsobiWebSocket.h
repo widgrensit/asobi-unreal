@@ -25,6 +25,18 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiPresenceUpdated, const FStri
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiVoteCastOk);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiVoteVetoOk);
 
+// World events
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldJoined, const FAsobiWorldInfo&, Info);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiWorldLeft);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldList, const TArray<FAsobiWorldInfo>&, Worlds);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldTick, int64, Tick, const FString&, UpdatesJson);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldTerrain, const FAsobiWorldTerrainChunk&, Chunk);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldEvent, const FString&, Event, const FString&, PayloadJson);
+
+// Direct message events
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiDmMessage, const FAsobiDirectMessage&, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiDmSent, const FString&, ChannelId);
+
 UCLASS(BlueprintType)
 class ASOBISDK_API UAsobiWebSocket : public UObject
 {
@@ -87,6 +99,29 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void UseVeto(const FString& VoteId);
 
+	// World
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldList(const FString& Mode);
+
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldCreate(const FString& Mode);
+
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldFindOrCreate(const FString& Mode);
+
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldJoin(const FString& WorldId);
+
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldLeave();
+
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldInput(const FString& DataJson);
+
+	// Direct messages
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void DmSend(const FString& RecipientId, const FString& Content);
+
 	// Connection events
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWsConnected OnConnected;
@@ -139,6 +174,30 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiVoteVetoOk OnVoteVetoOk;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldJoined OnWorldJoined;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldLeft OnWorldLeft;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldList OnWorldList;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldTick OnWorldTick;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldTerrain OnWorldTerrain;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldEvent OnWorldEvent;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiDmMessage OnDmMessage;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiDmSent OnDmSent;
 
 private:
 	void Send(const FString& Type, const TSharedPtr<FJsonObject>& Payload);

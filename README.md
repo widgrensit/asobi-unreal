@@ -1,6 +1,6 @@
 # asobi-unreal
 
-Unreal Engine 5 C++ plugin SDK for the [Asobi](https://github.com/widgrensit/asobi) game backend. Requires UE 5.4+.
+Unreal Engine 5 C++ plugin SDK for the [Asobi](https://github.com/widgrensit/asobi) game backend. Requires UE 5.7+.
 
 ## Installation
 

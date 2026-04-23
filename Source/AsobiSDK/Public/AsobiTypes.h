@@ -267,3 +267,42 @@ struct FAsobiError
 	UPROPERTY(BlueprintReadOnly) int32 StatusCode = 0;
 	UPROPERTY(BlueprintReadOnly) FString Reason;
 };
+
+USTRUCT(BlueprintType)
+struct FAsobiWorldInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) FString WorldId;
+	UPROPERTY(BlueprintReadOnly) FString Status;
+	UPROPERTY(BlueprintReadOnly) FString Mode;
+	UPROPERTY(BlueprintReadOnly) int32 PlayerCount = 0;
+	UPROPERTY(BlueprintReadOnly) int32 MaxPlayers = 0;
+	UPROPERTY(BlueprintReadOnly) int32 GridSize = 0;
+	UPROPERTY(BlueprintReadOnly) TArray<FString> Players;
+	UPROPERTY(BlueprintReadOnly) int64 StartedAt = 0;
+	UPROPERTY(BlueprintReadOnly) FString PhaseJson;
+};
+
+USTRUCT(BlueprintType)
+struct FAsobiWorldTerrainChunk
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) int32 CoordX = 0;
+	UPROPERTY(BlueprintReadOnly) int32 CoordY = 0;
+	UPROPERTY(BlueprintReadOnly) FString Base64Data;
+};
+
+USTRUCT(BlueprintType)
+struct FAsobiDirectMessage
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) FString Id;
+	UPROPERTY(BlueprintReadOnly) FString ChannelId;
+	UPROPERTY(BlueprintReadOnly) FString SenderId;
+	UPROPERTY(BlueprintReadOnly) FString RecipientId;
+	UPROPERTY(BlueprintReadOnly) FString Content;
+	UPROPERTY(BlueprintReadOnly) FString SentAt;
+};

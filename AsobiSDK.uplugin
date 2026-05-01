@@ -6,9 +6,13 @@
 	"Description": "Client SDK for the Asobi game backend. Provides HTTP REST and WebSocket APIs for authentication, matchmaking, economy, social, leaderboards, storage, and more.",
 	"Category": "Networking",
 	"CreatedBy": "Asobi",
+	"CreatedByURL": "https://github.com/widgrensit/asobi-unreal",
+	"DocsURL": "https://github.com/widgrensit/asobi-unreal#readme",
+	"SupportURL": "https://github.com/widgrensit/asobi-unreal/issues",
+	"EngineVersion": "5.4.0",
 	"EnabledByDefault": true,
 	"CanContainContent": false,
-	"IsBetaVersion": false,
+	"IsBetaVersion": true,
 	"Modules": [
 		{
 			"Name": "AsobiSDK",

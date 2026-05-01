@@ -284,6 +284,11 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		{
 			OnMatchLeft.Broadcast();
 		}
+		else if (Type == TEXT("match.matched"))
+		{
+			OnMatchMatched.Broadcast(PayloadStr);
+			OnMatchEvent.Broadcast(TEXT("matched"), PayloadStr);
+		}
 		else
 		{
 			FString Event = Type.Mid(6); // strip "match."

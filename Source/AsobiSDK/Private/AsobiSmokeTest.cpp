@@ -8,9 +8,18 @@ UAsobiSmokeTest::UAsobiSmokeTest()
 {
 }
 
-void UAsobiSmokeTest::RunTest(const FString& BaseUrl)
+void UAsobiSmokeTest::RunTest(const FString& InBaseUrl)
 {
 	bFinished = false;
+	bAQueued = false;
+	bBQueued = false;
+	bInputSent = false;
+	bXInitialCaptured = false;
+	XInitial = 0.0f;
+
+	BaseUrl = InBaseUrl;
+	WsUrl = DeriveWsUrl(InBaseUrl);
+
 	SetupPlayer(A, BaseUrl, true);
 	SetupPlayer(B, BaseUrl, false);
 
@@ -29,23 +38,27 @@ void UAsobiSmokeTest::RunTest(const FString& BaseUrl)
 			30.0f, false);
 	}
 
-	const FString PwA = TEXT("smoke_pw_12345");
-	const FString UserA = FString::Printf(TEXT("smoke_a_%d"), FMath::Rand());
-	const FString UserB = FString::Printf(TEXT("smoke_b_%d"), FMath::Rand());
+	const FString Pw = TEXT("smoke_pw_12345");
+	const int64 Now = FDateTime::UtcNow().ToUnixTimestamp();
+	const FString UserA = FString::Printf(TEXT("smoke_a_%lld_%d"), Now, FMath::Rand());
+	const FString UserB = FString::Printf(TEXT("smoke_b_%lld_%d"), Now, FMath::Rand());
+
+	UE_LOG(LogTemp, Log, TEXT("[smoke] Backend URL: %s (ws: %s)"), *BaseUrl, *WsUrl);
+	UE_LOG(LogTemp, Log, TEXT("[smoke] Scenario 1: register A=%s, B=%s"), *UserA, *UserB);
 
 	FOnAsobiAuthResponse OnA;
 	OnA.BindDynamic(this, &UAsobiSmokeTest::HandleAuthResultA);
-	A.Auth->Register(UserA, PwA, UserA, OnA);
+	A.Auth->Register(UserA, Pw, UserA, OnA);
 
 	FOnAsobiAuthResponse OnB;
 	OnB.BindDynamic(this, &UAsobiSmokeTest::HandleAuthResultB);
-	B.Auth->Register(UserB, PwA, UserB, OnB);
+	B.Auth->Register(UserB, Pw, UserB, OnB);
 }
 
-void UAsobiSmokeTest::SetupPlayer(FPlayer& P, const FString& BaseUrl, bool bIsA)
+void UAsobiSmokeTest::SetupPlayer(FPlayer& P, const FString& InBaseUrl, bool bIsA)
 {
 	P.Client = NewObject<UAsobiClient>(this);
-	P.Client->SetBaseUrl(BaseUrl);
+	P.Client->SetBaseUrl(InBaseUrl);
 
 	P.Auth = NewObject<UAsobiAuth>(this);
 	P.Auth->Init(P.Client);
@@ -57,23 +70,14 @@ void UAsobiSmokeTest::SetupPlayer(FPlayer& P, const FString& BaseUrl, bool bIsA)
 	if (bIsA)
 	{
 		P.WebSocket->OnConnected.AddDynamic(this, &UAsobiSmokeTest::HandleWsConnectedA);
-		P.WebSocket->OnMatchEvent.AddDynamic(this, &UAsobiSmokeTest::HandleMatchEventA);
+		P.WebSocket->OnMatchMatched.AddDynamic(this, &UAsobiSmokeTest::HandleMatchEventA);
 		P.WebSocket->OnMatchState.AddDynamic(this, &UAsobiSmokeTest::HandleMatchStateA);
 	}
 	else
 	{
 		P.WebSocket->OnConnected.AddDynamic(this, &UAsobiSmokeTest::HandleWsConnectedB);
-		P.WebSocket->OnMatchEvent.AddDynamic(this, &UAsobiSmokeTest::HandleMatchEventB);
+		P.WebSocket->OnMatchMatched.AddDynamic(this, &UAsobiSmokeTest::HandleMatchEventB);
 	}
-}
-
-static void DoAuth(UAsobiSmokeTest::FPlayer* P, const FAsobiAuthTokens& Tokens, FString WsUrlBase)
-{
-	P->PlayerId = Tokens.PlayerId;
-	const FString WsUrl = WsUrlBase.Replace(TEXT("http://"), TEXT("ws://"))
-	                               .Replace(TEXT("https://"), TEXT("wss://"))
-	                               + TEXT("/ws");
-	P->WebSocket->Connect(WsUrl);
 }
 
 void UAsobiSmokeTest::HandleAuthResultA(bool bSuccess, const FAsobiAuthTokens& Tokens)
@@ -81,7 +85,7 @@ void UAsobiSmokeTest::HandleAuthResultA(bool bSuccess, const FAsobiAuthTokens& T
 	if (!bSuccess) { Finish(false, TEXT("register failed for A")); return; }
 	A.PlayerId = Tokens.PlayerId;
 	UE_LOG(LogTemp, Log, TEXT("[smoke] Registered A: %s"), *A.PlayerId);
-	A.WebSocket->Connect(TEXT("ws://localhost:8080/ws"));
+	A.WebSocket->Connect(WsUrl);
 }
 
 void UAsobiSmokeTest::HandleAuthResultB(bool bSuccess, const FAsobiAuthTokens& Tokens)
@@ -89,15 +93,17 @@ void UAsobiSmokeTest::HandleAuthResultB(bool bSuccess, const FAsobiAuthTokens& T
 	if (!bSuccess) { Finish(false, TEXT("register failed for B")); return; }
 	B.PlayerId = Tokens.PlayerId;
 	UE_LOG(LogTemp, Log, TEXT("[smoke] Registered B: %s"), *B.PlayerId);
-	B.WebSocket->Connect(TEXT("ws://localhost:8080/ws"));
+	B.WebSocket->Connect(WsUrl);
 }
 
 void UAsobiSmokeTest::HandleWsConnectedA()
 {
+	UE_LOG(LogTemp, Log, TEXT("[smoke] A WS connected"));
 	A.WebSocket->Authenticate(A.Client->GetAuthToken());
 	if (!bAQueued)
 	{
 		bAQueued = true;
+		UE_LOG(LogTemp, Log, TEXT("[smoke] Scenario 2: A matchmaker.add mode=%s"), *MatchMode);
 		A.Matchmaker->Add(MatchMode, TArray<FString>{ A.PlayerId },
 			FOnAsobiMatchmakerResponse::CreateLambda([](bool, const FAsobiMatchmakerTicket&) {}));
 	}
@@ -105,27 +111,29 @@ void UAsobiSmokeTest::HandleWsConnectedA()
 
 void UAsobiSmokeTest::HandleWsConnectedB()
 {
+	UE_LOG(LogTemp, Log, TEXT("[smoke] B WS connected"));
 	B.WebSocket->Authenticate(B.Client->GetAuthToken());
 	if (!bBQueued)
 	{
 		bBQueued = true;
+		UE_LOG(LogTemp, Log, TEXT("[smoke] Scenario 2: B matchmaker.add mode=%s"), *MatchMode);
 		B.Matchmaker->Add(MatchMode, TArray<FString>{ B.PlayerId },
 			FOnAsobiMatchmakerResponse::CreateLambda([](bool, const FAsobiMatchmakerTicket&) {}));
 	}
 }
 
-void UAsobiSmokeTest::HandleMatchEventA(const FString& Event, const FString& PayloadJson)
+void UAsobiSmokeTest::HandleMatchEventA(const FString& PayloadJson)
 {
-	if (Event != TEXT("matched") || A.bMatched) return;
+	if (A.bMatched) return;
 	A.bMatched = true;
 	A.MatchedMatchId = ExtractMatchId(PayloadJson);
 	UE_LOG(LogTemp, Log, TEXT("[smoke] A matched: %s"), *A.MatchedMatchId);
 	CheckMatchedBoth();
 }
 
-void UAsobiSmokeTest::HandleMatchEventB(const FString& Event, const FString& PayloadJson)
+void UAsobiSmokeTest::HandleMatchEventB(const FString& PayloadJson)
 {
-	if (Event != TEXT("matched") || B.bMatched) return;
+	if (B.bMatched) return;
 	B.bMatched = true;
 	B.MatchedMatchId = ExtractMatchId(PayloadJson);
 	UE_LOG(LogTemp, Log, TEXT("[smoke] B matched: %s"), *B.MatchedMatchId);
@@ -141,19 +149,38 @@ void UAsobiSmokeTest::CheckMatchedBoth()
 			*A.MatchedMatchId, *B.MatchedMatchId));
 		return;
 	}
-	bInputSent = true;
-	UE_LOG(LogTemp, Log, TEXT("[smoke] Both matched, sending input"));
-	A.WebSocket->SendMatchInput(TEXT("{\"move_x\":1,\"move_y\":0}"));
+	UE_LOG(LogTemp, Log, TEXT("[smoke] Scenario 3: both matched on %s, awaiting first match.state"),
+		*A.MatchedMatchId);
 }
 
 void UAsobiSmokeTest::HandleMatchStateA(const FString& StateJson)
 {
-	if (!bInputSent || bFinished) return;
+	if (bFinished) return;
+	if (!A.bMatched || !B.bMatched) return;
+
 	const float X = ExtractPlayerX(StateJson, A.PlayerId);
-	if (X >= 1.0f)
+	if (X < 0.f) return; // player not present in this state frame yet
+
+	if (!bXInitialCaptured)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[smoke] match.state x = %f"), X);
-		Finish(true, FString::Printf(TEXT("PASS — x=%f"), X));
+		bXInitialCaptured = true;
+		XInitial = X;
+		UE_LOG(LogTemp, Log, TEXT("[smoke] x_initial = %.2f"), XInitial);
+
+		if (!bInputSent)
+		{
+			bInputSent = true;
+			UE_LOG(LogTemp, Log, TEXT("[smoke] sending match.input move_x=1"));
+			A.WebSocket->SendMatchInput(TEXT("{\"move_x\":1,\"move_y\":0}"));
+		}
+		return;
+	}
+
+	if (X > XInitial + MinXAdvancePx)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[smoke] match.state x=%.2f > x_initial+%.1f (=%.2f)"),
+			X, MinXAdvancePx, XInitial + MinXAdvancePx);
+		Finish(true, FString::Printf(TEXT("PASS — x_initial=%.2f x=%.2f"), XInitial, X));
 	}
 }
 
@@ -169,6 +196,21 @@ void UAsobiSmokeTest::Finish(bool bOk, const FString& Msg)
 	if (B.WebSocket) B.WebSocket->Disconnect();
 	UE_LOG(LogTemp, Log, TEXT("[smoke] %s"), *Msg);
 	OnResult.Broadcast(bOk, Msg);
+}
+
+FString UAsobiSmokeTest::DeriveWsUrl(const FString& InBaseUrl) const
+{
+	FString Url = InBaseUrl;
+	if (Url.StartsWith(TEXT("https://")))
+	{
+		Url = TEXT("wss://") + Url.RightChop(8);
+	}
+	else if (Url.StartsWith(TEXT("http://")))
+	{
+		Url = TEXT("ws://") + Url.RightChop(7);
+	}
+	while (Url.EndsWith(TEXT("/"))) { Url.LeftChopInline(1); }
+	return Url + TEXT("/ws");
 }
 
 FString UAsobiSmokeTest::ExtractMatchId(const FString& PayloadJson) const

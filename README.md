@@ -82,6 +82,10 @@ Blueprint-callable on every subsystem. Typed `USTRUCT` responses for player, wor
 
 See [asobi-unreal-demo](https://github.com/widgrensit/asobi-unreal-demo) for a working UE5 sample project.
 
+## Smoke test
+
+Every release of this plugin runs the canonical SDK smoke flow against `widgrensit/sdk_demo_backend`. See [`Source/AsobiSDK/Tests/SmokeTest.md`](Source/AsobiSDK/Tests/SmokeTest.md) for the manual run command and CI notes.
+
 ## License
 
 Apache 2.0

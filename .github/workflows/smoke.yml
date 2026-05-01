@@ -132,22 +132,21 @@ jobs:
         # dispatch test's assumptions, so we check the corpus on every PR.
         run: |
           set -euo pipefail
-          expected="\
-chat.joined chat.left chat.message dm.message dm.sent error \
-match.finished match.joined match.left match.matched \
-match.matchmaker_expired match.matchmaker_failed match.state \
-match.vote_result match.vote_start match.vote_tally match.vote_vetoed \
-matchmaker.queued matchmaker.removed notification.new presence.updated \
-session.connected session.heartbeat vote.cast_ok vote.veto_ok \
-world.finished world.joined world.left world.list world.phase_changed \
-world.terrain world.tick"
+          expected="chat.joined chat.left chat.message dm.message dm.sent error \
+            match.finished match.joined match.left match.matched \
+            match.matchmaker_expired match.matchmaker_failed match.state \
+            match.vote_result match.vote_start match.vote_tally match.vote_vetoed \
+            matchmaker.queued matchmaker.removed notification.new presence.updated \
+            session.connected session.heartbeat vote.cast_ok vote.veto_ok \
+            world.finished world.joined world.left world.list world.phase_changed \
+            world.terrain world.tick"
           fixture_dir="Source/AsobiSDK/Tests/Fixtures"
           if [ ! -d "$fixture_dir" ]; then
             echo "fixture dir missing: $fixture_dir"
             exit 1
           fi
           actual=$(cd "$fixture_dir" && ls *.json 2>/dev/null | sed 's/\.json$//' | sort | tr '\n' ' ' | sed 's/ $//')
-          want=$(echo "$expected" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')
+          want=$(echo "$expected" | tr -s ' \t\n' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//')
           if [ "$actual" != "$want" ]; then
             echo "fixture corpus drift detected"
             echo "want: $want"

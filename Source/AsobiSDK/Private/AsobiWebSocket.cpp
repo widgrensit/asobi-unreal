@@ -1,9 +1,13 @@
 #include "AsobiWebSocket.h"
 #include "AsobiClient.h"
+#include "AsobiCore/Protocol.h"
 #include "WebSocketsModule.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+
+#include <optional>
+#include <string_view>
 
 UAsobiWebSocket::UAsobiWebSocket()
 {
@@ -261,41 +265,51 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 	// Broadcast raw message
 	OnMessage.Broadcast(Type, PayloadStr);
 
-	// Dispatch typed events
-	if (Type == TEXT("session.connected"))
+	// Resolve the wire-`type` to an engine-agnostic EventId via AsobiCore.
+	// Unknown types fall through silently (preserves prior behavior — the
+	// raw OnMessage above still surfaces them to user code).
+	const FTCHARToUTF8 TypeUtf8(*Type);
+	const std::optional<asobi::core::EventId> Id =
+		asobi::core::ParseEventId(std::string_view(TypeUtf8.Get(), TypeUtf8.Length()));
+	if (!Id.has_value())
 	{
-		// Handled by raw OnMessage
+		return;
 	}
-	else if (Type == TEXT("session.heartbeat"))
+
+	using asobi::core::EventId;
+	switch (*Id)
 	{
-		// Handled by raw OnMessage
-	}
-	else if (Type == TEXT("match.state"))
-	{
+	case EventId::SessionConnected:
+	case EventId::SessionHeartbeat:
+	case EventId::Error:
+		// Intentionally surfaced only via the raw OnMessage above —
+		// matches the per-SDK contract (love2d, godot, etc).
+		break;
+
+	case EventId::MatchState:
 		OnMatchState.Broadcast(PayloadStr);
-	}
-	else if (Type.StartsWith(TEXT("match.")))
-	{
-		if (Type == TEXT("match.joined"))
-		{
-			OnMatchJoined.Broadcast(PayloadStr);
-		}
-		else if (Type == TEXT("match.left"))
-		{
-			OnMatchLeft.Broadcast();
-		}
-		else if (Type == TEXT("match.matched"))
-		{
-			OnMatchMatched.Broadcast(PayloadStr);
-			OnMatchEvent.Broadcast(TEXT("matched"), PayloadStr);
-		}
-		else
-		{
-			FString Event = Type.Mid(6); // strip "match."
-			OnMatchEvent.Broadcast(Event, PayloadStr);
-		}
-	}
-	else if (Type == TEXT("matchmaker.queued"))
+		break;
+	case EventId::MatchJoined:
+		OnMatchJoined.Broadcast(PayloadStr);
+		break;
+	case EventId::MatchLeft:
+		OnMatchLeft.Broadcast();
+		break;
+	case EventId::MatchMatched:
+		OnMatchMatched.Broadcast(PayloadStr);
+		OnMatchEvent.Broadcast(TEXT("matched"), PayloadStr);
+		break;
+	case EventId::MatchFinished:
+	case EventId::MatchMatchmakerExpired:
+	case EventId::MatchMatchmakerFailed:
+	case EventId::MatchVoteResult:
+	case EventId::MatchVoteStart:
+	case EventId::MatchVoteTally:
+	case EventId::MatchVoteVetoed:
+		OnMatchEvent.Broadcast(Type.Mid(6), PayloadStr); // strip "match."
+		break;
+
+	case EventId::MatchmakerQueued:
 	{
 		FString TicketId;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -303,12 +317,13 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			(*PayloadObj)->TryGetStringField(TEXT("ticket_id"), TicketId);
 		}
 		OnMatchmakerQueued.Broadcast(TicketId);
+		break;
 	}
-	else if (Type == TEXT("matchmaker.removed"))
-	{
+	case EventId::MatchmakerRemoved:
 		OnMatchmakerRemoved.Broadcast();
-	}
-	else if (Type == TEXT("chat.message"))
+		break;
+
+	case EventId::ChatMessage:
 	{
 		FString ChannelId;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -316,8 +331,9 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			(*PayloadObj)->TryGetStringField(TEXT("channel_id"), ChannelId);
 		}
 		OnChatReceived.Broadcast(ChannelId, PayloadStr);
+		break;
 	}
-	else if (Type == TEXT("chat.joined"))
+	case EventId::ChatJoined:
 	{
 		FString ChannelId;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -325,8 +341,9 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			(*PayloadObj)->TryGetStringField(TEXT("channel_id"), ChannelId);
 		}
 		OnChatJoined.Broadcast(ChannelId);
+		break;
 	}
-	else if (Type == TEXT("chat.left"))
+	case EventId::ChatLeft:
 	{
 		FString ChannelId;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -334,12 +351,13 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			(*PayloadObj)->TryGetStringField(TEXT("channel_id"), ChannelId);
 		}
 		OnChatLeft.Broadcast(ChannelId);
+		break;
 	}
-	else if (Type == TEXT("notification.new"))
-	{
+
+	case EventId::NotificationNew:
 		OnNotificationReceived.Broadcast(PayloadStr);
-	}
-	else if (Type == TEXT("presence.updated"))
+		break;
+	case EventId::PresenceUpdated:
 	{
 		FString Status;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -347,16 +365,16 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			(*PayloadObj)->TryGetStringField(TEXT("status"), Status);
 		}
 		OnPresenceUpdated.Broadcast(Status);
+		break;
 	}
-	else if (Type == TEXT("vote.cast_ok"))
-	{
+	case EventId::VoteCastOk:
 		OnVoteCastOk.Broadcast();
-	}
-	else if (Type == TEXT("vote.veto_ok"))
-	{
+		break;
+	case EventId::VoteVetoOk:
 		OnVoteVetoOk.Broadcast();
-	}
-	else if (Type == TEXT("world.joined"))
+		break;
+
+	case EventId::WorldJoined:
 	{
 		FAsobiWorldInfo Info;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -364,12 +382,12 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			Info = UAsobiClient::ParseWorldInfo(*PayloadObj);
 		}
 		OnWorldJoined.Broadcast(Info);
+		break;
 	}
-	else if (Type == TEXT("world.left"))
-	{
+	case EventId::WorldLeft:
 		OnWorldLeft.Broadcast();
-	}
-	else if (Type == TEXT("world.list"))
+		break;
+	case EventId::WorldList:
 	{
 		TArray<FAsobiWorldInfo> Worlds;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -388,8 +406,9 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			}
 		}
 		OnWorldList.Broadcast(Worlds);
+		break;
 	}
-	else if (Type == TEXT("world.tick"))
+	case EventId::WorldTick:
 	{
 		int64 Tick = 0;
 		FString UpdatesJson;
@@ -414,8 +433,9 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			}
 		}
 		OnWorldTick.Broadcast(Tick, UpdatesJson);
+		break;
 	}
-	else if (Type == TEXT("world.terrain"))
+	case EventId::WorldTerrain:
 	{
 		FAsobiWorldTerrainChunk Chunk;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -423,13 +443,14 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			Chunk = UAsobiClient::ParseWorldTerrain(*PayloadObj);
 		}
 		OnWorldTerrain.Broadcast(Chunk);
+		break;
 	}
-	else if (Type.StartsWith(TEXT("world.")))
-	{
-		FString Event = Type.Mid(6);
-		OnWorldEvent.Broadcast(Event, PayloadStr);
-	}
-	else if (Type == TEXT("dm.message"))
+	case EventId::WorldPhaseChanged:
+	case EventId::WorldFinished:
+		OnWorldEvent.Broadcast(Type.Mid(6), PayloadStr); // strip "world."
+		break;
+
+	case EventId::DmMessage:
 	{
 		FAsobiDirectMessage Msg;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -437,8 +458,9 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			Msg = UAsobiClient::ParseDirectMessage(*PayloadObj);
 		}
 		OnDmMessage.Broadcast(Msg);
+		break;
 	}
-	else if (Type == TEXT("dm.sent"))
+	case EventId::DmSent:
 	{
 		FString ChannelId;
 		if (PayloadObj && PayloadObj->IsValid())
@@ -446,6 +468,8 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			(*PayloadObj)->TryGetStringField(TEXT("channel_id"), ChannelId);
 		}
 		OnDmSent.Broadcast(ChannelId);
+		break;
+	}
 	}
 }
 

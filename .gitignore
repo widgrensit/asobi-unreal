@@ -14,3 +14,6 @@ DerivedDataCache/
 .vscode/
 .idea/
 .DS_Store
+
+# AsobiCore cmake build output (see Source/AsobiCore/CMakeLists.txt)
+/build/

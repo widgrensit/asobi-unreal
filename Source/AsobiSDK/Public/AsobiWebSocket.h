@@ -14,6 +14,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWsError, const FString&, Err
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiMatchState, const FString&, StateJson);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiMatchEvent, const FString&, Event, const FString&, PayloadJson);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiMatchJoined, const FString&, InfoJson);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiMatchMatched, const FString&, InfoJson);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiMatchLeft);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiMatchmakerQueued, const FString&, TicketId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiMatchmakerRemoved);
@@ -144,6 +145,15 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiMatchJoined OnMatchJoined;
+
+	/**
+	 * Fires when the matchmaker forms a match including this player.
+	 * Pair this with OnMatchJoined: matchmade flows fire OnMatchMatched only;
+	 * direct-join flows (client-initiated match.join) fire OnMatchJoined only.
+	 * Both signal "in a match — match.state will follow."
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiMatchMatched OnMatchMatched;
 
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiMatchLeft OnMatchLeft;

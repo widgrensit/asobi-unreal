@@ -1,33 +1,39 @@
 # Smoke test workflow.
 #
 # What this DOES verify:
-#   1. The smoke and dispatch automation sources
-#      (Source/AsobiSDK/Private/Tests/AsobiSmokeTest.cpp,
-#      Source/AsobiSDK/Private/Tests/AsobiDispatchTest.cpp) and the runner
-#      UObject parse as C++ (best-effort syntax check via g++ with a tiny
-#      UE-stub include path — full UnrealHeaderTool/UBT compilation is NOT
-#      run here).
-#   2. The vendored canonical protocol fixtures under
-#      Source/AsobiSDK/Tests/Fixtures/ match the 32-event corpus the dispatch
-#      test exercises (catches drift if a fixture is added/removed without
-#      updating the test).
-#   3. The backend the plugin is coded against (widgrensit/sdk_demo_backend) still
+#   1. The AsobiCore engine-agnostic protocol library builds with stock
+#      g++/cmake and its doctest-driven dispatch test passes on every PR
+#      (asobi-core job). This is the canonical dispatch gate — every
+#      vendored fixture must round-trip through AsobiCore::ParseEventId
+#      to its EventId, and every EventId must have a fixture. Mirrors the
+#      dispatch tests in the love2d, godot, defold, dart, and js SDKs.
+#   2. The smoke automation source (Source/AsobiSDK/Private/Tests/
+#      AsobiSmokeTest.cpp) and the runner UObject parse as C++
+#      (best-effort syntax check via clang with a tiny UE-stub include
+#      path — full UnrealHeaderTool/UBT compilation is NOT run here).
+#   3. The vendored canonical protocol fixtures under
+#      Source/AsobiSDK/Tests/Fixtures/ match the 32-event corpus
+#      (catches drift if a fixture is added/removed without updating
+#      the test). Belt-and-suspenders with the asobi-core job.
+#   4. The backend the plugin is coded against (widgrensit/sdk_demo_backend) still
 #      satisfies the wire contract: `POST /api/v1/auth/register` succeeds and the
 #      `/ws` endpoint accepts a WebSocket upgrade. This is the contract test.
 #
 # What this DOES NOT verify:
 #   - That the compiled plugin actually drives that contract end-to-end. A real
-#     UE Automation Spec run (`Automation RunTests Asobi.Smoke`,
-#     `Automation RunTests Asobi.Dispatch`) requires an installed Unreal Engine,
-#     a host UE project, and a license — it is not practical on a hosted
-#     ubuntu-24.04 runner without a self-hosted runner or the EpicGames
-#     container image (license-gated). Tracked in widgrensit/asobi-unreal#5.
+#     UE Automation Spec run (`Automation RunTests Asobi.Smoke`) requires an
+#     installed Unreal Engine, a host UE project, and a license — it is not
+#     practical on a hosted ubuntu-24.04 runner without a self-hosted runner
+#     or the EpicGames container image (license-gated). Tracked in
+#     widgrensit/asobi-unreal#5. The dispatch logic itself is now covered by
+#     the asobi-core job, which is why we no longer ship an engine-gated
+#     Asobi.Dispatch automation spec.
 #
 # Manual run (see Source/AsobiSDK/Tests/SmokeTest.md):
 #   git clone https://github.com/widgrensit/sdk_demo_backend && \
 #     (cd sdk_demo_backend && docker compose up -d)
 #   UE5Editor-Cmd /path/to/MyProject.uproject \
-#     -ExecCmds="Automation RunTests Asobi.Smoke+Asobi.Dispatch; Quit" \
+#     -ExecCmds="Automation RunTests Asobi.Smoke; Quit" \
 #     -unattended -nullrhi -log
 #
 # Future: when a self-hosted runner with UE preinstalled is available, add a
@@ -42,6 +48,27 @@ on:
     branches: [main]
 
 jobs:
+  asobi-core:
+    name: AsobiCore dispatch (stock CI dispatch gate)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
+
+      - name: Configure
+        run: cmake -S Source/AsobiCore -B build
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run dispatch tests
+        working-directory: build
+        run: ctest --output-on-failure
+
   smoke-source-syntax:
     name: Smoke source parses as C++
     runs-on: ubuntu-24.04
@@ -85,11 +112,9 @@ jobs:
           STUB
           # We compile *just* the public smoke header against the stub —
           # excluding the .generated.h, which is UBT-produced. The .cpp's
-          # include UE-internal headers we don't stub here. The Asobi.Dispatch
-          # automation test (Source/AsobiSDK/Private/Tests/AsobiDispatchTest.cpp)
-          # is in the same situation — it ships in this repo so a UE-equipped
-          # runner has something to run, but cannot be parse-checked beyond
-          # this stub on hosted CI.
+          # include UE-internal headers we don't stub here. Dispatch logic
+          # is now exercised by the asobi-core job (stock CI), so we no
+          # longer ship an engine-gated dispatch automation spec.
           clang -x c++ -std=c++17 -fsyntax-only \
             -DWITH_DEV_AUTOMATION_TESTS=0 \
             -include /tmp/uestub/UEStub.h \

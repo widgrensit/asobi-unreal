@@ -209,13 +209,6 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiDmSent OnDmSent;
 
-#if WITH_DEV_AUTOMATION_TESTS
-	// Test-only entry point that drives the same dispatch path the live
-	// WebSocket message callback uses. Lets unit tests feed canonical
-	// fixtures through HandleMessage without standing up a real socket.
-	void HandleMessageForTest(const FString& MessageString) { HandleMessage(MessageString); }
-#endif
-
 private:
 	void Send(const FString& Type, const TSharedPtr<FJsonObject>& Payload);
 	void HandleMessage(const FString& MessageString);

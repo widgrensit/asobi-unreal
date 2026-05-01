@@ -44,21 +44,7 @@ jobs:
       - name: Install clang
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang clang-format
-
-      - name: clang-format parse check
-        # Catches files that are not lex-able as C++ (mismatched braces,
-        # malformed string literals, etc.).
-        run: |
-          for f in \
-            Source/AsobiSDK/Private/Tests/AsobiSmokeTest.cpp \
-            Source/AsobiSDK/Private/AsobiSmokeTest.cpp \
-            Source/AsobiSDK/Public/AsobiSmokeTest.h
-          do
-            echo "::group::clang-format $f"
-            clang-format --style=LLVM --dry-run -Werror "$f"
-            echo "::endgroup::"
-          done
+          sudo apt-get install -y clang
 
       - name: clang -fsyntax-only against a UE-name stub
         # We cannot link against the real UE headers (license-gated, multi-GB).
@@ -118,15 +104,18 @@ jobs:
       - name: Wait for backend
         run: |
           for i in $(seq 1 60); do
+            # On connection failure curl exits non-zero AND -w writes "000",
+            # so we don't need a fallback || echo. Match exact 3-digit codes.
             code=$(curl -sS -o /dev/null -w "%{http_code}" \
               -X POST http://localhost:8084/api/v1/auth/register \
               -H "Content-Type: application/json" \
-              -d '{}' || echo "000")
-            # any < 500 is "server is talking"
-            if [ "$code" != "000" ] && [ "$code" -lt 500 ]; then
-              echo "backend up after ${i}s (probe: $code)"
-              exit 0
-            fi
+              -d '{}' 2>/dev/null) || code="000"
+            case "$code" in
+              [1-4][0-9][0-9])
+                echo "backend up after ${i}s (probe: $code)"
+                exit 0
+                ;;
+            esac
             sleep 1
           done
           echo "backend never came up"

@@ -1,4 +1,8 @@
-# Unreal Smoke Test
+# Unreal Smoke + Dispatch Tests
+
+Two automation specs ship in this directory.
+
+## `Asobi.Smoke` — end-to-end backend smoke
 
 End-to-end test that proves the AsobiSDK plugin can talk to a live Asobi backend and complete the canonical 3-scenario flow:
 
@@ -8,12 +12,20 @@ End-to-end test that proves the AsobiSDK plugin can talk to a live Asobi backend
 
 Spec: [widgrensit/sdk_demo_backend/SMOKE.md](https://github.com/widgrensit/sdk_demo_backend/blob/main/SMOKE.md). Mode `"demo"`. Default URL `http://localhost:8084`. Override with `ASOBI_URL` env var.
 
+## `Asobi.Dispatch` — protocol dispatch unit test
+
+Pure unit test (no backend, no socket) that feeds every canonical asobi protocol fixture (32 server-event types) through `UAsobiWebSocket::HandleMessage` and asserts a delegate fires for each. Catches the doc-vs-server drift class of bugs (e.g. server emits `match.matched` but the SDK only listens for `matchmaker.matched`).
+
+Fixtures are vendored under `Source/AsobiSDK/Tests/Fixtures/` from `asobi/priv/protocol/fixtures/`. The CI fixture-corpus job in `.github/workflows/smoke.yml` keeps them in sync with the canonical 32-event list.
+
 ## What's in this directory
 
 | File | Role |
 |---|---|
 | `Source/AsobiSDK/Private/Tests/AsobiSmokeTest.cpp` | UE Automation entry point (`Asobi.Smoke`) — runs from the editor or `UE5Editor-Cmd`. |
 | `Source/AsobiSDK/Public/AsobiSmokeTest.h`, `Source/AsobiSDK/Private/AsobiSmokeTest.cpp` | `UAsobiSmokeTest` UObject — the actual test runner, callable from C++ or Blueprint. |
+| `Source/AsobiSDK/Private/Tests/AsobiDispatchTest.cpp` | UE Automation entry point (`Asobi.Dispatch`) — parameterized over the 32-event fixture corpus. |
+| `Source/AsobiSDK/Tests/Fixtures/*.json` | Canonical server-event fixtures (32). |
 
 The Automation test is a thin wrapper that drives `UAsobiSmokeTest` and asserts on its `OnResult` delegate.
 
@@ -36,11 +48,11 @@ In any UE 5.4+ project that has the `AsobiSDK` plugin enabled:
 
 ```bash
 UE5Editor-Cmd /path/to/MyProject.uproject \
-  -ExecCmds="Automation RunTests Asobi.Smoke; Quit" \
+  -ExecCmds="Automation RunTests Asobi.Smoke+Asobi.Dispatch; Quit" \
   -unattended -nullrhi -log
 ```
 
-Or open the editor → *Tools → Session Frontend → Automation* → check `Asobi.Smoke` → *Start Tests*.
+Or open the editor → *Tools → Session Frontend → Automation* → check `Asobi.Smoke` and/or `Asobi.Dispatch` → *Start Tests*. `Asobi.Dispatch` does **not** need the backend running.
 
 To target a remote backend:
 

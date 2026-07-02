@@ -1,13 +1,22 @@
 #include "AsobiClient.h"
+#include "AsobiSaveGame.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
+#include "Kismet/GameplayStatics.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
+namespace
+{
+	const TCHAR* AsobiSessionSlot = TEXT("AsobiSession");
+	const int32 AsobiSessionUserIndex = 0;
+}
+
 UAsobiClient::UAsobiClient()
 	: BaseUrl(TEXT("http://localhost:8080"))
 {
+	LoadPersistedRefreshToken();
 }
 
 void UAsobiClient::SetBaseUrl(const FString& Url)
@@ -23,11 +32,17 @@ void UAsobiClient::SetAuthToken(const FString& Token)
 void UAsobiClient::SetRefreshToken(const FString& Token)
 {
 	RefreshToken = Token;
+	PersistRefreshToken();
 }
 
 FString UAsobiClient::GetAuthToken() const
 {
 	return AuthToken;
+}
+
+FString UAsobiClient::GetRefreshToken() const
+{
+	return RefreshToken;
 }
 
 FString UAsobiClient::GetPlayerId() const
@@ -38,6 +53,53 @@ FString UAsobiClient::GetPlayerId() const
 void UAsobiClient::SetPlayerId(const FString& Id)
 {
 	PlayerId = Id;
+}
+
+void UAsobiClient::ClearTokens()
+{
+	AuthToken.Empty();
+	RefreshToken.Empty();
+	PlayerId.Empty();
+	PersistRefreshToken();
+}
+
+void UAsobiClient::LoadPersistedRefreshToken()
+{
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		return;
+	}
+	if (!UGameplayStatics::DoesSaveGameExist(AsobiSessionSlot, AsobiSessionUserIndex))
+	{
+		return;
+	}
+	if (UAsobiSaveGame* Save = Cast<UAsobiSaveGame>(
+		UGameplayStatics::LoadGameFromSlot(AsobiSessionSlot, AsobiSessionUserIndex)))
+	{
+		RefreshToken = Save->RefreshToken;
+	}
+}
+
+void UAsobiClient::PersistRefreshToken()
+{
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		return;
+	}
+	if (RefreshToken.IsEmpty())
+	{
+		if (UGameplayStatics::DoesSaveGameExist(AsobiSessionSlot, AsobiSessionUserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(AsobiSessionSlot, AsobiSessionUserIndex);
+		}
+		return;
+	}
+	if (UAsobiSaveGame* Save = Cast<UAsobiSaveGame>(
+		UGameplayStatics::CreateSaveGameObject(UAsobiSaveGame::StaticClass())))
+	{
+		Save->RefreshToken = RefreshToken;
+		UGameplayStatics::SaveGameToSlot(Save, AsobiSessionSlot, AsobiSessionUserIndex);
+	}
 }
 
 void UAsobiClient::Get(const FString& Path, const FOnAsobiResponse& Callback)
@@ -62,6 +124,11 @@ void UAsobiClient::Delete(const FString& Path, const FOnAsobiResponse& Callback)
 
 void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback)
 {
+	SendRequestWithRetry(Verb, Path, Body, Callback, true);
+}
+
+void UAsobiClient::SendRequestWithRetry(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback, bool bAllowRefresh)
+{
 	FHttpModule& HttpModule = FHttpModule::Get();
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule.CreateRequest();
 
@@ -80,8 +147,9 @@ void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const F
 		Request->SetContentAsString(Body);
 	}
 
+	TWeakObjectPtr<UAsobiClient> WeakThis(this);
 	Request->OnProcessRequestComplete().BindLambda(
-		[Callback](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnected)
+		[WeakThis, Verb, Path, Body, Callback, bAllowRefresh](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnected)
 		{
 			if (!bConnected || !Resp.IsValid())
 			{
@@ -89,11 +157,71 @@ void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const F
 				return;
 			}
 
-			bool bSuccess = Resp->GetResponseCode() >= 200 && Resp->GetResponseCode() < 300;
-			Callback.ExecuteIfBound(bSuccess, Resp->GetContentAsString());
+			const int32 Code = Resp->GetResponseCode();
+			const FString Content = Resp->GetContentAsString();
+
+			// On a 401 from an authed (non-/auth/*) call, transparently refresh
+			// the token pair and replay the original request exactly once.
+			UAsobiClient* Self = WeakThis.Get();
+			const bool bIsAuthPath = Path.StartsWith(TEXT("/api/v1/auth/"));
+			if (Code == 401 && bAllowRefresh && !bIsAuthPath && Self && !Self->RefreshToken.IsEmpty())
+			{
+				Self->RefreshAndReplay(Verb, Path, Body, Callback);
+				return;
+			}
+
+			const bool bSuccess = Code >= 200 && Code < 300;
+			Callback.ExecuteIfBound(bSuccess, Content);
 		});
 
 	Request->ProcessRequest();
+}
+
+void UAsobiClient::RefreshAndReplay(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& OriginalCallback)
+{
+	TSharedPtr<FJsonObject> RefreshBody = MakeShareable(new FJsonObject);
+	RefreshBody->SetStringField(TEXT("refresh_token"), RefreshToken);
+
+	TWeakObjectPtr<UAsobiClient> WeakThis(this);
+	SendRequestWithRetry(TEXT("POST"), TEXT("/api/v1/auth/refresh"), ToJsonString(RefreshBody),
+		FOnAsobiResponse::CreateLambda([WeakThis, Verb, Path, Body, OriginalCallback](bool bSuccess, const FString& Response)
+		{
+			UAsobiClient* Self = WeakThis.Get();
+			if (!Self)
+			{
+				OriginalCallback.ExecuteIfBound(false, TEXT(""));
+				return;
+			}
+
+			FString NewAccess;
+			FString NewRefresh;
+			if (bSuccess)
+			{
+				TSharedPtr<FJsonObject> Json = ParseJson(Response);
+				if (Json.IsValid())
+				{
+					Json->TryGetStringField(TEXT("access_token"), NewAccess);
+					Json->TryGetStringField(TEXT("refresh_token"), NewRefresh);
+				}
+			}
+
+			if (!bSuccess || NewAccess.IsEmpty())
+			{
+				Self->OnAuthExpired.Broadcast();
+				OriginalCallback.ExecuteIfBound(false, Response);
+				return;
+			}
+
+			Self->AuthToken = NewAccess;
+			if (!NewRefresh.IsEmpty())
+			{
+				Self->SetRefreshToken(NewRefresh);
+			}
+			Self->OnTokenRotated.Broadcast(NewAccess);
+
+			// Replay the original request once, with refresh-on-401 disabled.
+			Self->SendRequestWithRetry(Verb, Path, Body, OriginalCallback, false);
+		}), false);
 }
 
 TSharedPtr<FJsonObject> UAsobiClient::ParseJson(const FString& JsonString)

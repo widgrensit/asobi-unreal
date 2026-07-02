@@ -60,6 +60,29 @@ void UAsobiAuth::OAuthAuthenticate(const FString& Provider, const FString& Provi
 		}));
 }
 
+void UAsobiAuth::Logout(const FOnAsobiResponse& Callback)
+{
+	if (!Client)
+	{
+		Callback.ExecuteIfBound(false, TEXT(""));
+		return;
+	}
+
+	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
+	Body->SetStringField(TEXT("refresh_token"), Client->GetRefreshToken());
+
+	TWeakObjectPtr<UAsobiClient> WeakClient(Client);
+	Client->Post(TEXT("/api/v1/auth/logout"), Body,
+		FOnAsobiResponse::CreateLambda([WeakClient, Callback](bool bSuccess, const FString& Response)
+		{
+			if (UAsobiClient* C = WeakClient.Get())
+			{
+				C->ClearTokens();
+			}
+			Callback.ExecuteIfBound(bSuccess, Response);
+		}));
+}
+
 void UAsobiAuth::LinkProvider(const FString& Provider, const FString& ProviderToken, const FOnAsobiResponse& Callback)
 {
 	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);

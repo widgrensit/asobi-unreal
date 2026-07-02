@@ -9,6 +9,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiWsConnected);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWsDisconnected, const FString&, Reason);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWsMessage, const FString&, Type, const FString&, Payload);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWsError, const FString&, Error);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiWsAuthExpired);
 
 // Typed event delegates
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiMatchState, const FString&, StateJson);
@@ -58,6 +59,11 @@ public:
 	// Session
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void Authenticate(const FString& Token);
+
+	// Re-sends session.connect with a rotated access token (e.g. after a REST
+	// 401 auto-refresh). Wire UAsobiClient::OnTokenRotated to this.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void Reauthenticate(const FString& NewToken);
 
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void SendHeartbeat();
@@ -135,6 +141,12 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWsError OnError;
+
+	// Fires when the socket is closed or errors for an auth reason (server 1008
+	// idle_auth_timeout, session_revoked, invalid_token). Treat as force
+	// re-login rather than a blind reconnect.
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWsAuthExpired OnAuthExpired;
 
 	// Typed events
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
@@ -216,4 +228,5 @@ private:
 
 	TSharedPtr<IWebSocket> WebSocket;
 	int32 NextCid = 1;
+	FString LastAuthToken;
 };

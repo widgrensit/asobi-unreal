@@ -12,7 +12,7 @@ static TArray<FAsobiLeaderboardEntry> ParseEntries(const FString& Response)
 	if (Json.IsValid())
 	{
 		const TArray<TSharedPtr<FJsonValue>>* DataArray;
-		if (Json->TryGetArrayField(TEXT("data"), DataArray))
+		if (Json->TryGetArrayField(TEXT("entries"), DataArray))
 		{
 			for (const auto& Val : *DataArray)
 			{

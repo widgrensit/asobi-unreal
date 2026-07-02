@@ -17,7 +17,7 @@ void UAsobiStorage::ListSaves(const FOnAsobiCloudSaveListResponse& Callback)
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("saves"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -69,7 +69,7 @@ void UAsobiStorage::ListStorage(const FString& Collection, const FOnAsobiStorage
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("objects"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{

@@ -17,7 +17,7 @@ void UAsobiSocial::GetFriends(const FOnAsobiFriendListResponse& Callback)
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("friends"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -145,7 +145,7 @@ void UAsobiSocial::GetGroupMembers(const FString& GroupId, const FOnAsobiGroupMe
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("members"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -210,7 +210,7 @@ void UAsobiSocial::GetChatHistory(const FString& ChannelId, const FOnAsobiChatHi
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("messages"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{

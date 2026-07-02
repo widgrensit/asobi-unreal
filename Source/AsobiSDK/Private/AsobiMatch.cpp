@@ -17,7 +17,7 @@ void UAsobiMatch::List(const FOnAsobiMatchListResponse& Callback)
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("matches"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{

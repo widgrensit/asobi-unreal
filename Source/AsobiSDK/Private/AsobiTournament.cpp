@@ -17,7 +17,7 @@ void UAsobiTournament::List(const FOnAsobiTournamentListResponse& Callback)
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("tournaments"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -69,7 +69,7 @@ void UAsobiTournament::GetNotifications(const FOnAsobiNotificationListResponse& 
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("notifications"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{

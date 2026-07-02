@@ -81,6 +81,14 @@ void UAsobiWebSocket::Reauthenticate(const FString& NewToken)
 	Authenticate(NewToken);
 }
 
+void UAsobiWebSocket::BindToClient(UAsobiClient* InClient)
+{
+	if (InClient)
+	{
+		InClient->OnTokenRotated.AddUniqueDynamic(this, &UAsobiWebSocket::Reauthenticate);
+	}
+}
+
 void UAsobiWebSocket::SendHeartbeat()
 {
 	Send(TEXT("session.heartbeat"), nullptr);
@@ -112,10 +120,20 @@ void UAsobiWebSocket::LeaveMatch()
 	Send(TEXT("match.leave"), nullptr);
 }
 
-void UAsobiWebSocket::MatchmakerAdd(const FString& Mode, const TArray<FString>& Party)
+void UAsobiWebSocket::MatchmakerAdd(const FString& Mode, const FString& PropertiesJson, const TArray<FString>& Party)
 {
 	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
 	Payload->SetStringField(TEXT("mode"), Mode);
+
+	if (!PropertiesJson.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> PropsObj;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+		if (FJsonSerializer::Deserialize(Reader, PropsObj) && PropsObj.IsValid())
+		{
+			Payload->SetObjectField(TEXT("properties"), PropsObj);
+		}
+	}
 
 	TArray<TSharedPtr<FJsonValue>> PartyArr;
 	for (const FString& P : Party)

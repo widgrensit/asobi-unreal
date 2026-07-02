@@ -290,6 +290,41 @@ static bool GetBool(const TSharedPtr<FJsonObject>& Json, const FString& Key, boo
 	return Value;
 }
 
+// Serializes an arbitrary object/array field back to a JSON string, matching
+// the SDK's `...Json` FString convention for opaque payloads (metadata,
+// content, votes, storage values). Returns empty for missing/null/scalar.
+static FString GetJsonField(const TSharedPtr<FJsonObject>& Json, const FString& Key)
+{
+	if (!Json.IsValid())
+	{
+		return FString();
+	}
+	const TSharedPtr<FJsonValue>* Found = Json->Values.Find(Key);
+	if (!Found || !Found->IsValid())
+	{
+		return FString();
+	}
+	const TSharedPtr<FJsonValue>& Value = *Found;
+	FString Output;
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output);
+	if (Value->Type == EJson::Object)
+	{
+		const TSharedPtr<FJsonObject>& Obj = Value->AsObject();
+		if (Obj.IsValid())
+		{
+			FJsonSerializer::Serialize(Obj.ToSharedRef(), Writer);
+			return Output;
+		}
+	}
+	else if (Value->Type == EJson::Array)
+	{
+		FJsonSerializer::Serialize(Value->AsArray(), Writer);
+		return Output;
+	}
+	return FString();
+}
+
 FAsobiPlayer UAsobiClient::ParsePlayer(const TSharedPtr<FJsonObject>& Json)
 {
 	FAsobiPlayer P;
@@ -298,6 +333,7 @@ FAsobiPlayer UAsobiClient::ParsePlayer(const TSharedPtr<FJsonObject>& Json)
 	P.Username = GetStr(Json, TEXT("username"));
 	P.DisplayName = GetStr(Json, TEXT("display_name"));
 	P.AvatarUrl = GetStr(Json, TEXT("avatar_url"));
+	P.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	P.InsertedAt = GetStr(Json, TEXT("inserted_at"));
 	P.UpdatedAt = GetStr(Json, TEXT("updated_at"));
 	return P;
@@ -382,6 +418,7 @@ FAsobiStoreListing UAsobiClient::ParseStoreListing(const TSharedPtr<FJsonObject>
 	L.bActive = GetBool(Json, TEXT("active"), true);
 	L.ValidFrom = GetStr(Json, TEXT("valid_from"));
 	L.ValidUntil = GetStr(Json, TEXT("valid_until"));
+	L.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	return L;
 }
 
@@ -395,6 +432,7 @@ FAsobiPlayerItem UAsobiClient::ParsePlayerItem(const TSharedPtr<FJsonObject>& Js
 	I.Quantity = GetInt(Json, TEXT("quantity"), 1);
 	I.AcquiredAt = GetStr(Json, TEXT("acquired_at"));
 	I.UpdatedAt = GetStr(Json, TEXT("updated_at"));
+	I.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	return I;
 }
 
@@ -421,9 +459,22 @@ FAsobiGroup UAsobiClient::ParseGroup(const TSharedPtr<FJsonObject>& Json)
 	G.MaxMembers = GetInt(Json, TEXT("max_members"), 50);
 	G.bOpen = GetBool(Json, TEXT("open"));
 	G.CreatorId = GetStr(Json, TEXT("creator_id"));
+	G.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	G.InsertedAt = GetStr(Json, TEXT("inserted_at"));
 	G.UpdatedAt = GetStr(Json, TEXT("updated_at"));
 	return G;
+}
+
+FAsobiGroupMember UAsobiClient::ParseGroupMember(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiGroupMember M;
+	if (!Json.IsValid()) return M;
+	M.Id = GetStr(Json, TEXT("id"));
+	M.GroupId = GetStr(Json, TEXT("group_id"));
+	M.PlayerId = GetStr(Json, TEXT("player_id"));
+	M.Role = GetStr(Json, TEXT("role"));
+	M.JoinedAt = GetStr(Json, TEXT("joined_at"));
+	return M;
 }
 
 FAsobiLeaderboardEntry UAsobiClient::ParseLeaderboardEntry(const TSharedPtr<FJsonObject>& Json)
@@ -449,6 +500,7 @@ FAsobiCloudSave UAsobiClient::ParseCloudSave(const TSharedPtr<FJsonObject>& Json
 	S.Slot = GetStr(Json, TEXT("slot"));
 	S.Version = GetInt(Json, TEXT("version"), 1);
 	S.UpdatedAt = GetStr(Json, TEXT("updated_at"));
+	S.DataJson = GetJsonField(Json, TEXT("data"));
 	return S;
 }
 
@@ -464,6 +516,7 @@ FAsobiStorageObject UAsobiClient::ParseStorageObject(const TSharedPtr<FJsonObjec
 	O.ReadPerm = GetStr(Json, TEXT("read_perm"));
 	O.WritePerm = GetStr(Json, TEXT("write_perm"));
 	O.UpdatedAt = GetStr(Json, TEXT("updated_at"));
+	O.ValueJson = GetJsonField(Json, TEXT("value"));
 	return O;
 }
 
@@ -490,6 +543,7 @@ FAsobiNotification UAsobiClient::ParseNotification(const TSharedPtr<FJsonObject>
 	N.PlayerId = GetStr(Json, TEXT("player_id"));
 	N.Type = GetStr(Json, TEXT("type"));
 	N.Subject = GetStr(Json, TEXT("subject"));
+	N.ContentJson = GetJsonField(Json, TEXT("content"));
 	N.bRead = GetBool(Json, TEXT("read"));
 	N.SentAt = GetStr(Json, TEXT("sent_at"));
 	return N;
@@ -516,6 +570,10 @@ FAsobiVote UAsobiClient::ParseVote(const TSharedPtr<FJsonObject>& Json)
 	V.MatchId = GetStr(Json, TEXT("match_id"));
 	V.Template = GetStr(Json, TEXT("template"));
 	V.Method = GetStr(Json, TEXT("method"));
+	V.OptionsJson = GetJsonField(Json, TEXT("options"));
+	V.VotesCastJson = GetJsonField(Json, TEXT("votes_cast"));
+	V.ResultJson = GetJsonField(Json, TEXT("result"));
+	V.DistributionJson = GetJsonField(Json, TEXT("distribution"));
 	V.Turnout = GetFloat(Json, TEXT("turnout"));
 	V.EligibleCount = GetInt(Json, TEXT("eligible_count"));
 	V.WindowMs = GetInt(Json, TEXT("window_ms"));

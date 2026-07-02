@@ -5,6 +5,8 @@
 #include "AsobiTypes.h"
 #include "AsobiWebSocket.generated.h"
 
+class UAsobiClient;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiWsConnected);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWsDisconnected, const FString&, Reason);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWsMessage, const FString&, Type, const FString&, Payload);
@@ -65,6 +67,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void Reauthenticate(const FString& NewToken);
 
+	// Binds this socket to a client so a REST 401 auto-refresh transparently
+	// re-auths the live socket. Idiomatically the two objects are constructed
+	// independently (see AsobiSmokeTest), so this is the SDK's one-call wiring
+	// point: it hooks UAsobiClient::OnTokenRotated -> Reauthenticate. Safe to
+	// call before or after Connect; call once per client.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void BindToClient(UAsobiClient* InClient);
+
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void SendHeartbeat();
 
@@ -79,8 +89,10 @@ public:
 	void LeaveMatch();
 
 	// Matchmaker
+	// PropertiesJson is an optional JSON object of matchmaking properties; pass
+	// an empty string to omit it.
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
-	void MatchmakerAdd(const FString& Mode, const TArray<FString>& Party);
+	void MatchmakerAdd(const FString& Mode, const FString& PropertiesJson, const TArray<FString>& Party);
 
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void MatchmakerRemove(const FString& TicketId);

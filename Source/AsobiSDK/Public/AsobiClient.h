@@ -80,6 +80,7 @@ public:
 	static FAsobiPlayerItem ParsePlayerItem(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiFriendship ParseFriendship(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiGroup ParseGroup(const TSharedPtr<FJsonObject>& Json);
+	static FAsobiGroupMember ParseGroupMember(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiLeaderboardEntry ParseLeaderboardEntry(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiCloudSave ParseCloudSave(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiStorageObject ParseStorageObject(const TSharedPtr<FJsonObject>& Json);

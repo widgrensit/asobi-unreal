@@ -104,6 +104,7 @@ struct FAsobiStoreListing
 	UPROPERTY(BlueprintReadOnly) bool bActive = true;
 	UPROPERTY(BlueprintReadOnly) FString ValidFrom;
 	UPROPERTY(BlueprintReadOnly) FString ValidUntil;
+	UPROPERTY(BlueprintReadOnly) FString MetadataJson;
 };
 
 USTRUCT(BlueprintType)
@@ -130,6 +131,7 @@ struct FAsobiPlayerItem
 	UPROPERTY(BlueprintReadOnly) int32 Quantity = 1;
 	UPROPERTY(BlueprintReadOnly) FString AcquiredAt;
 	UPROPERTY(BlueprintReadOnly) FString UpdatedAt;
+	UPROPERTY(BlueprintReadOnly) FString MetadataJson;
 };
 
 USTRUCT(BlueprintType)
@@ -158,6 +160,19 @@ struct FAsobiGroup
 	UPROPERTY(BlueprintReadOnly) FString CreatorId;
 	UPROPERTY(BlueprintReadOnly) FString InsertedAt;
 	UPROPERTY(BlueprintReadOnly) FString UpdatedAt;
+	UPROPERTY(BlueprintReadOnly) FString MetadataJson;
+};
+
+USTRUCT(BlueprintType)
+struct FAsobiGroupMember
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) FString Id;
+	UPROPERTY(BlueprintReadOnly) FString GroupId;
+	UPROPERTY(BlueprintReadOnly) FString PlayerId;
+	UPROPERTY(BlueprintReadOnly) FString Role;
+	UPROPERTY(BlueprintReadOnly) FString JoinedAt;
 };
 
 USTRUCT(BlueprintType)
@@ -184,6 +199,7 @@ struct FAsobiCloudSave
 	UPROPERTY(BlueprintReadOnly) FString Slot;
 	UPROPERTY(BlueprintReadOnly) int32 Version = 1;
 	UPROPERTY(BlueprintReadOnly) FString UpdatedAt;
+	UPROPERTY(BlueprintReadOnly) FString DataJson;
 };
 
 USTRUCT(BlueprintType)
@@ -199,6 +215,7 @@ struct FAsobiStorageObject
 	UPROPERTY(BlueprintReadOnly) FString ReadPerm;
 	UPROPERTY(BlueprintReadOnly) FString WritePerm;
 	UPROPERTY(BlueprintReadOnly) FString UpdatedAt;
+	UPROPERTY(BlueprintReadOnly) FString ValueJson;
 };
 
 USTRUCT(BlueprintType)
@@ -225,6 +242,7 @@ struct FAsobiNotification
 	UPROPERTY(BlueprintReadOnly) FString PlayerId;
 	UPROPERTY(BlueprintReadOnly) FString Type;
 	UPROPERTY(BlueprintReadOnly) FString Subject;
+	UPROPERTY(BlueprintReadOnly) FString ContentJson;
 	UPROPERTY(BlueprintReadOnly) bool bRead = false;
 	UPROPERTY(BlueprintReadOnly) FString SentAt;
 };
@@ -251,6 +269,10 @@ struct FAsobiVote
 	UPROPERTY(BlueprintReadOnly) FString MatchId;
 	UPROPERTY(BlueprintReadOnly) FString Template;
 	UPROPERTY(BlueprintReadOnly) FString Method;
+	UPROPERTY(BlueprintReadOnly) FString OptionsJson;
+	UPROPERTY(BlueprintReadOnly) FString VotesCastJson;
+	UPROPERTY(BlueprintReadOnly) FString ResultJson;
+	UPROPERTY(BlueprintReadOnly) FString DistributionJson;
 	UPROPERTY(BlueprintReadOnly) float Turnout = 0.0f;
 	UPROPERTY(BlueprintReadOnly) int32 EligibleCount = 0;
 	UPROPERTY(BlueprintReadOnly) int32 WindowMs = 0;

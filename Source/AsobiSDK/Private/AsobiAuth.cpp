@@ -97,10 +97,10 @@ void UAsobiAuth::UnlinkProvider(const FString& Provider, const FOnAsobiResponse&
 	Client->Delete(FString::Printf(TEXT("/api/v1/auth/unlink?provider=%s"), *Provider), Callback);
 }
 
-void UAsobiAuth::VerifyAppleIAP(const FString& ReceiptData, const FOnAsobiResponse& Callback)
+void UAsobiAuth::VerifyAppleIAP(const FString& SignedTransaction, const FOnAsobiResponse& Callback)
 {
 	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
-	Body->SetStringField(TEXT("receipt_data"), ReceiptData);
+	Body->SetStringField(TEXT("signed_transaction"), SignedTransaction);
 
 	Client->Post(TEXT("/api/v1/iap/apple"), Body, Callback);
 }

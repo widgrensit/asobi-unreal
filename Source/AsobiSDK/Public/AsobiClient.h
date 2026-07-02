@@ -7,6 +7,15 @@
 
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnAsobiResponse, bool, bSuccess, const FString&, ResponseBody);
 
+// Fires after a 401 auto-refresh rotates the access token. Wire this to
+// UAsobiWebSocket::Reauthenticate so the socket re-sends session.connect
+// with the fresh access token.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiTokenRotated, const FString&, AccessToken);
+
+// Fires when a refresh attempt fails (refresh token invalid/expired/reused).
+// Callers should treat this as "force re-login".
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiAuthExpired);
+
 UCLASS(BlueprintType)
 class ASOBISDK_API UAsobiClient : public UObject
 {
@@ -28,9 +37,28 @@ public:
 	FString GetAuthToken() const;
 
 	UFUNCTION(BlueprintPure, Category = "Asobi")
+	FString GetRefreshToken() const;
+
+	UFUNCTION(BlueprintPure, Category = "Asobi")
 	FString GetPlayerId() const;
 
 	void SetPlayerId(const FString& Id);
+
+	// Clears access/refresh tokens and player id in memory and removes the
+	// persisted refresh token from disk.
+	UFUNCTION(BlueprintCallable, Category = "Asobi")
+	void ClearTokens();
+
+	// Loads the persisted refresh token from the SaveGame slot into memory.
+	// Called automatically on construction; also exposed for explicit reload.
+	UFUNCTION(BlueprintCallable, Category = "Asobi")
+	void LoadPersistedRefreshToken();
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi")
+	FOnAsobiTokenRotated OnTokenRotated;
+
+	UPROPERTY(BlueprintAssignable, Category = "Asobi")
+	FOnAsobiAuthExpired OnAuthExpired;
 
 	// HTTP helpers
 	void Get(const FString& Path, const FOnAsobiResponse& Callback);
@@ -52,6 +80,7 @@ public:
 	static FAsobiPlayerItem ParsePlayerItem(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiFriendship ParseFriendship(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiGroup ParseGroup(const TSharedPtr<FJsonObject>& Json);
+	static FAsobiGroupMember ParseGroupMember(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiLeaderboardEntry ParseLeaderboardEntry(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiCloudSave ParseCloudSave(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiStorageObject ParseStorageObject(const TSharedPtr<FJsonObject>& Json);
@@ -65,6 +94,9 @@ public:
 
 private:
 	void SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback);
+	void SendRequestWithRetry(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback, bool bAllowRefresh);
+	void RefreshAndReplay(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& OriginalCallback);
+	void PersistRefreshToken();
 
 	FString BaseUrl;
 	FString AuthToken;

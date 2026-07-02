@@ -1,13 +1,22 @@
 #include "AsobiClient.h"
+#include "AsobiSaveGame.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
+#include "Kismet/GameplayStatics.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
+namespace
+{
+	const TCHAR* AsobiSessionSlot = TEXT("AsobiSession");
+	const int32 AsobiSessionUserIndex = 0;
+}
+
 UAsobiClient::UAsobiClient()
 	: BaseUrl(TEXT("http://localhost:8080"))
 {
+	LoadPersistedRefreshToken();
 }
 
 void UAsobiClient::SetBaseUrl(const FString& Url)
@@ -23,11 +32,17 @@ void UAsobiClient::SetAuthToken(const FString& Token)
 void UAsobiClient::SetRefreshToken(const FString& Token)
 {
 	RefreshToken = Token;
+	PersistRefreshToken();
 }
 
 FString UAsobiClient::GetAuthToken() const
 {
 	return AuthToken;
+}
+
+FString UAsobiClient::GetRefreshToken() const
+{
+	return RefreshToken;
 }
 
 FString UAsobiClient::GetPlayerId() const
@@ -38,6 +53,53 @@ FString UAsobiClient::GetPlayerId() const
 void UAsobiClient::SetPlayerId(const FString& Id)
 {
 	PlayerId = Id;
+}
+
+void UAsobiClient::ClearTokens()
+{
+	AuthToken.Empty();
+	RefreshToken.Empty();
+	PlayerId.Empty();
+	PersistRefreshToken();
+}
+
+void UAsobiClient::LoadPersistedRefreshToken()
+{
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		return;
+	}
+	if (!UGameplayStatics::DoesSaveGameExist(AsobiSessionSlot, AsobiSessionUserIndex))
+	{
+		return;
+	}
+	if (UAsobiSaveGame* Save = Cast<UAsobiSaveGame>(
+		UGameplayStatics::LoadGameFromSlot(AsobiSessionSlot, AsobiSessionUserIndex)))
+	{
+		RefreshToken = Save->RefreshToken;
+	}
+}
+
+void UAsobiClient::PersistRefreshToken()
+{
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		return;
+	}
+	if (RefreshToken.IsEmpty())
+	{
+		if (UGameplayStatics::DoesSaveGameExist(AsobiSessionSlot, AsobiSessionUserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(AsobiSessionSlot, AsobiSessionUserIndex);
+		}
+		return;
+	}
+	if (UAsobiSaveGame* Save = Cast<UAsobiSaveGame>(
+		UGameplayStatics::CreateSaveGameObject(UAsobiSaveGame::StaticClass())))
+	{
+		Save->RefreshToken = RefreshToken;
+		UGameplayStatics::SaveGameToSlot(Save, AsobiSessionSlot, AsobiSessionUserIndex);
+	}
 }
 
 void UAsobiClient::Get(const FString& Path, const FOnAsobiResponse& Callback)
@@ -62,6 +124,11 @@ void UAsobiClient::Delete(const FString& Path, const FOnAsobiResponse& Callback)
 
 void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback)
 {
+	SendRequestWithRetry(Verb, Path, Body, Callback, true);
+}
+
+void UAsobiClient::SendRequestWithRetry(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback, bool bAllowRefresh)
+{
 	FHttpModule& HttpModule = FHttpModule::Get();
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule.CreateRequest();
 
@@ -80,8 +147,9 @@ void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const F
 		Request->SetContentAsString(Body);
 	}
 
+	TWeakObjectPtr<UAsobiClient> WeakThis(this);
 	Request->OnProcessRequestComplete().BindLambda(
-		[Callback](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnected)
+		[WeakThis, Verb, Path, Body, Callback, bAllowRefresh](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnected)
 		{
 			if (!bConnected || !Resp.IsValid())
 			{
@@ -89,11 +157,71 @@ void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const F
 				return;
 			}
 
-			bool bSuccess = Resp->GetResponseCode() >= 200 && Resp->GetResponseCode() < 300;
-			Callback.ExecuteIfBound(bSuccess, Resp->GetContentAsString());
+			const int32 Code = Resp->GetResponseCode();
+			const FString Content = Resp->GetContentAsString();
+
+			// On a 401 from an authed (non-/auth/*) call, transparently refresh
+			// the token pair and replay the original request exactly once.
+			UAsobiClient* Self = WeakThis.Get();
+			const bool bIsAuthPath = Path.StartsWith(TEXT("/api/v1/auth/"));
+			if (Code == 401 && bAllowRefresh && !bIsAuthPath && Self && !Self->RefreshToken.IsEmpty())
+			{
+				Self->RefreshAndReplay(Verb, Path, Body, Callback);
+				return;
+			}
+
+			const bool bSuccess = Code >= 200 && Code < 300;
+			Callback.ExecuteIfBound(bSuccess, Content);
 		});
 
 	Request->ProcessRequest();
+}
+
+void UAsobiClient::RefreshAndReplay(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& OriginalCallback)
+{
+	TSharedPtr<FJsonObject> RefreshBody = MakeShareable(new FJsonObject);
+	RefreshBody->SetStringField(TEXT("refresh_token"), RefreshToken);
+
+	TWeakObjectPtr<UAsobiClient> WeakThis(this);
+	SendRequestWithRetry(TEXT("POST"), TEXT("/api/v1/auth/refresh"), ToJsonString(RefreshBody),
+		FOnAsobiResponse::CreateLambda([WeakThis, Verb, Path, Body, OriginalCallback](bool bSuccess, const FString& Response)
+		{
+			UAsobiClient* Self = WeakThis.Get();
+			if (!Self)
+			{
+				OriginalCallback.ExecuteIfBound(false, TEXT(""));
+				return;
+			}
+
+			FString NewAccess;
+			FString NewRefresh;
+			if (bSuccess)
+			{
+				TSharedPtr<FJsonObject> Json = ParseJson(Response);
+				if (Json.IsValid())
+				{
+					Json->TryGetStringField(TEXT("access_token"), NewAccess);
+					Json->TryGetStringField(TEXT("refresh_token"), NewRefresh);
+				}
+			}
+
+			if (!bSuccess || NewAccess.IsEmpty())
+			{
+				Self->OnAuthExpired.Broadcast();
+				OriginalCallback.ExecuteIfBound(false, Response);
+				return;
+			}
+
+			Self->AuthToken = NewAccess;
+			if (!NewRefresh.IsEmpty())
+			{
+				Self->SetRefreshToken(NewRefresh);
+			}
+			Self->OnTokenRotated.Broadcast(NewAccess);
+
+			// Replay the original request once, with refresh-on-401 disabled.
+			Self->SendRequestWithRetry(Verb, Path, Body, OriginalCallback, false);
+		}), false);
 }
 
 TSharedPtr<FJsonObject> UAsobiClient::ParseJson(const FString& JsonString)
@@ -162,6 +290,41 @@ static bool GetBool(const TSharedPtr<FJsonObject>& Json, const FString& Key, boo
 	return Value;
 }
 
+// Serializes an arbitrary object/array field back to a JSON string, matching
+// the SDK's `...Json` FString convention for opaque payloads (metadata,
+// content, votes, storage values). Returns empty for missing/null/scalar.
+static FString GetJsonField(const TSharedPtr<FJsonObject>& Json, const FString& Key)
+{
+	if (!Json.IsValid())
+	{
+		return FString();
+	}
+	const TSharedPtr<FJsonValue>* Found = Json->Values.Find(Key);
+	if (!Found || !Found->IsValid())
+	{
+		return FString();
+	}
+	const TSharedPtr<FJsonValue>& Value = *Found;
+	FString Output;
+	TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output);
+	if (Value->Type == EJson::Object)
+	{
+		const TSharedPtr<FJsonObject>& Obj = Value->AsObject();
+		if (Obj.IsValid())
+		{
+			FJsonSerializer::Serialize(Obj.ToSharedRef(), Writer);
+			return Output;
+		}
+	}
+	else if (Value->Type == EJson::Array)
+	{
+		FJsonSerializer::Serialize(Value->AsArray(), Writer);
+		return Output;
+	}
+	return FString();
+}
+
 FAsobiPlayer UAsobiClient::ParsePlayer(const TSharedPtr<FJsonObject>& Json)
 {
 	FAsobiPlayer P;
@@ -170,6 +333,7 @@ FAsobiPlayer UAsobiClient::ParsePlayer(const TSharedPtr<FJsonObject>& Json)
 	P.Username = GetStr(Json, TEXT("username"));
 	P.DisplayName = GetStr(Json, TEXT("display_name"));
 	P.AvatarUrl = GetStr(Json, TEXT("avatar_url"));
+	P.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	P.InsertedAt = GetStr(Json, TEXT("inserted_at"));
 	P.UpdatedAt = GetStr(Json, TEXT("updated_at"));
 	return P;
@@ -254,6 +418,7 @@ FAsobiStoreListing UAsobiClient::ParseStoreListing(const TSharedPtr<FJsonObject>
 	L.bActive = GetBool(Json, TEXT("active"), true);
 	L.ValidFrom = GetStr(Json, TEXT("valid_from"));
 	L.ValidUntil = GetStr(Json, TEXT("valid_until"));
+	L.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	return L;
 }
 
@@ -267,6 +432,7 @@ FAsobiPlayerItem UAsobiClient::ParsePlayerItem(const TSharedPtr<FJsonObject>& Js
 	I.Quantity = GetInt(Json, TEXT("quantity"), 1);
 	I.AcquiredAt = GetStr(Json, TEXT("acquired_at"));
 	I.UpdatedAt = GetStr(Json, TEXT("updated_at"));
+	I.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	return I;
 }
 
@@ -293,9 +459,22 @@ FAsobiGroup UAsobiClient::ParseGroup(const TSharedPtr<FJsonObject>& Json)
 	G.MaxMembers = GetInt(Json, TEXT("max_members"), 50);
 	G.bOpen = GetBool(Json, TEXT("open"));
 	G.CreatorId = GetStr(Json, TEXT("creator_id"));
+	G.MetadataJson = GetJsonField(Json, TEXT("metadata"));
 	G.InsertedAt = GetStr(Json, TEXT("inserted_at"));
 	G.UpdatedAt = GetStr(Json, TEXT("updated_at"));
 	return G;
+}
+
+FAsobiGroupMember UAsobiClient::ParseGroupMember(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiGroupMember M;
+	if (!Json.IsValid()) return M;
+	M.Id = GetStr(Json, TEXT("id"));
+	M.GroupId = GetStr(Json, TEXT("group_id"));
+	M.PlayerId = GetStr(Json, TEXT("player_id"));
+	M.Role = GetStr(Json, TEXT("role"));
+	M.JoinedAt = GetStr(Json, TEXT("joined_at"));
+	return M;
 }
 
 FAsobiLeaderboardEntry UAsobiClient::ParseLeaderboardEntry(const TSharedPtr<FJsonObject>& Json)
@@ -321,6 +500,7 @@ FAsobiCloudSave UAsobiClient::ParseCloudSave(const TSharedPtr<FJsonObject>& Json
 	S.Slot = GetStr(Json, TEXT("slot"));
 	S.Version = GetInt(Json, TEXT("version"), 1);
 	S.UpdatedAt = GetStr(Json, TEXT("updated_at"));
+	S.DataJson = GetJsonField(Json, TEXT("data"));
 	return S;
 }
 
@@ -336,6 +516,7 @@ FAsobiStorageObject UAsobiClient::ParseStorageObject(const TSharedPtr<FJsonObjec
 	O.ReadPerm = GetStr(Json, TEXT("read_perm"));
 	O.WritePerm = GetStr(Json, TEXT("write_perm"));
 	O.UpdatedAt = GetStr(Json, TEXT("updated_at"));
+	O.ValueJson = GetJsonField(Json, TEXT("value"));
 	return O;
 }
 
@@ -362,6 +543,7 @@ FAsobiNotification UAsobiClient::ParseNotification(const TSharedPtr<FJsonObject>
 	N.PlayerId = GetStr(Json, TEXT("player_id"));
 	N.Type = GetStr(Json, TEXT("type"));
 	N.Subject = GetStr(Json, TEXT("subject"));
+	N.ContentJson = GetJsonField(Json, TEXT("content"));
 	N.bRead = GetBool(Json, TEXT("read"));
 	N.SentAt = GetStr(Json, TEXT("sent_at"));
 	return N;
@@ -388,6 +570,10 @@ FAsobiVote UAsobiClient::ParseVote(const TSharedPtr<FJsonObject>& Json)
 	V.MatchId = GetStr(Json, TEXT("match_id"));
 	V.Template = GetStr(Json, TEXT("template"));
 	V.Method = GetStr(Json, TEXT("method"));
+	V.OptionsJson = GetJsonField(Json, TEXT("options"));
+	V.VotesCastJson = GetJsonField(Json, TEXT("votes_cast"));
+	V.ResultJson = GetJsonField(Json, TEXT("result"));
+	V.DistributionJson = GetJsonField(Json, TEXT("distribution"));
 	V.Turnout = GetFloat(Json, TEXT("turnout"));
 	V.EligibleCount = GetInt(Json, TEXT("eligible_count"));
 	V.WindowMs = GetInt(Json, TEXT("window_ms"));

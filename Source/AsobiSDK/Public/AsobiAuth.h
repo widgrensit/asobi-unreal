@@ -31,6 +31,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
 	void OAuthAuthenticate(const FString& Provider, const FString& ProviderToken, const FOnAsobiAuthResponse& Callback);
 
+	// POST /api/v1/auth/logout (authenticated). Sends the stored refresh token
+	// so the backend revokes the whole family, then clears local tokens.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
+	void Logout(const FOnAsobiResponse& Callback);
+
 	// POST /api/v1/auth/link (authenticated)
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
 	void LinkProvider(const FString& Provider, const FString& ProviderToken, const FOnAsobiResponse& Callback);
@@ -39,9 +44,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
 	void UnlinkProvider(const FString& Provider, const FOnAsobiResponse& Callback);
 
-	// POST /api/v1/iap/apple (authenticated)
+	// POST /api/v1/iap/apple (authenticated). Pass the StoreKit 2 JWS
+	// signed transaction (the backend expects `signed_transaction`).
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
-	void VerifyAppleIAP(const FString& ReceiptData, const FOnAsobiResponse& Callback);
+	void VerifyAppleIAP(const FString& SignedTransaction, const FOnAsobiResponse& Callback);
 
 	// POST /api/v1/iap/google (authenticated)
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")

@@ -17,7 +17,7 @@ void UAsobiEconomy::GetWallets(const FOnAsobiWalletListResponse& Callback)
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("wallets"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -46,7 +46,7 @@ void UAsobiEconomy::GetWalletHistory(const FString& Currency, const FOnAsobiTran
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("transactions"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -75,7 +75,7 @@ void UAsobiEconomy::GetStoreListings(const FOnAsobiStoreListingListResponse& Cal
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("listings"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -113,7 +113,7 @@ void UAsobiEconomy::GetInventory(const FOnAsobiInventoryResponse& Callback)
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("items"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{

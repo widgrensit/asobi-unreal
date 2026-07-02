@@ -17,7 +17,7 @@ void UAsobiSocial::GetFriends(const FOnAsobiFriendListResponse& Callback)
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("friends"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{
@@ -100,6 +100,94 @@ void UAsobiSocial::GetGroup(const FString& GroupId, const FOnAsobiGroupResponse&
 		}));
 }
 
+void UAsobiSocial::UpdateGroup(const FString& GroupId, const FString& Name, const FString& Description, int32 MaxMembers, bool bOpen, const FOnAsobiGroupResponse& Callback)
+{
+	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
+	if (!Name.IsEmpty())
+	{
+		Body->SetStringField(TEXT("name"), Name);
+	}
+	if (!Description.IsEmpty())
+	{
+		Body->SetStringField(TEXT("description"), Description);
+	}
+	if (MaxMembers > 0)
+	{
+		Body->SetNumberField(TEXT("max_members"), MaxMembers);
+	}
+	Body->SetBoolField(TEXT("open"), bOpen);
+
+	Client->Put(FString::Printf(TEXT("/api/v1/groups/%s"), *GroupId), Body,
+		FOnAsobiResponse::CreateLambda([Callback](bool bSuccess, const FString& Response)
+		{
+			FAsobiGroup Group;
+			if (bSuccess)
+			{
+				TSharedPtr<FJsonObject> Json = UAsobiClient::ParseJson(Response);
+				if (Json.IsValid())
+				{
+					Group = UAsobiClient::ParseGroup(Json);
+				}
+			}
+			Callback.ExecuteIfBound(bSuccess, Group);
+		}));
+}
+
+void UAsobiSocial::GetGroupMembers(const FString& GroupId, const FOnAsobiGroupMemberListResponse& Callback)
+{
+	Client->Get(FString::Printf(TEXT("/api/v1/groups/%s/members"), *GroupId),
+		FOnAsobiResponse::CreateLambda([Callback](bool bSuccess, const FString& Response)
+		{
+			TArray<FAsobiGroupMember> Members;
+			if (bSuccess)
+			{
+				TSharedPtr<FJsonObject> Json = UAsobiClient::ParseJson(Response);
+				if (Json.IsValid())
+				{
+					const TArray<TSharedPtr<FJsonValue>>* DataArray;
+					if (Json->TryGetArrayField(TEXT("members"), DataArray))
+					{
+						for (const auto& Val : *DataArray)
+						{
+							const TSharedPtr<FJsonObject>* Obj;
+							if (Val->TryGetObject(Obj))
+							{
+								Members.Add(UAsobiClient::ParseGroupMember(*Obj));
+							}
+						}
+					}
+				}
+			}
+			Callback.ExecuteIfBound(bSuccess, Members);
+		}));
+}
+
+void UAsobiSocial::UpdateMemberRole(const FString& GroupId, const FString& PlayerId, const FString& Role, const FOnAsobiGroupMemberResponse& Callback)
+{
+	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
+	Body->SetStringField(TEXT("role"), Role);
+
+	Client->Put(FString::Printf(TEXT("/api/v1/groups/%s/members/%s/role"), *GroupId, *PlayerId), Body,
+		FOnAsobiResponse::CreateLambda([Callback](bool bSuccess, const FString& Response)
+		{
+			FAsobiGroupMember Member;
+			if (bSuccess)
+			{
+				TSharedPtr<FJsonObject> Json = UAsobiClient::ParseJson(Response);
+				if (Json.IsValid())
+				{
+					Member = UAsobiClient::ParseGroupMember(Json);
+				}
+			}
+			Callback.ExecuteIfBound(bSuccess, Member);
+		}));
+}
+
+void UAsobiSocial::KickMember(const FString& GroupId, const FString& PlayerId, const FOnAsobiResponse& Callback)
+{
+	Client->Delete(FString::Printf(TEXT("/api/v1/groups/%s/members/%s"), *GroupId, *PlayerId), Callback);
+}
+
 void UAsobiSocial::JoinGroup(const FString& GroupId, const FOnAsobiResponse& Callback)
 {
 	Client->Post(FString::Printf(TEXT("/api/v1/groups/%s/join"), *GroupId), nullptr, Callback);
@@ -122,7 +210,7 @@ void UAsobiSocial::GetChatHistory(const FString& ChannelId, const FOnAsobiChatHi
 				if (Json.IsValid())
 				{
 					const TArray<TSharedPtr<FJsonValue>>* DataArray;
-					if (Json->TryGetArrayField(TEXT("data"), DataArray))
+					if (Json->TryGetArrayField(TEXT("messages"), DataArray))
 					{
 						for (const auto& Val : *DataArray)
 						{

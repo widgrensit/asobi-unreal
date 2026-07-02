@@ -34,6 +34,16 @@ void UAsobiWebSocket::Connect(const FString& Url)
 
 	WebSocket->OnClosed().AddLambda([this](int32 StatusCode, const FString& Reason, bool bWasClean)
 	{
+		// 1008 (policy violation) is how the backend closes idle/unauthed or
+		// revoked sockets. Surface these as auth-expired so callers force a
+		// re-login instead of blindly reconnecting with a dead token.
+		if (StatusCode == 1008
+			|| Reason.Contains(TEXT("idle_auth_timeout"))
+			|| Reason.Contains(TEXT("session_revoked"))
+			|| Reason.Contains(TEXT("invalid_token")))
+		{
+			OnAuthExpired.Broadcast();
+		}
 		OnDisconnected.Broadcast(Reason);
 	});
 
@@ -60,9 +70,23 @@ bool UAsobiWebSocket::IsConnected() const
 
 void UAsobiWebSocket::Authenticate(const FString& Token)
 {
+	LastAuthToken = Token;
 	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
 	Payload->SetStringField(TEXT("token"), Token);
 	Send(TEXT("session.connect"), Payload);
+}
+
+void UAsobiWebSocket::Reauthenticate(const FString& NewToken)
+{
+	Authenticate(NewToken);
+}
+
+void UAsobiWebSocket::BindToClient(UAsobiClient* InClient)
+{
+	if (InClient)
+	{
+		InClient->OnTokenRotated.AddUniqueDynamic(this, &UAsobiWebSocket::Reauthenticate);
+	}
 }
 
 void UAsobiWebSocket::SendHeartbeat()
@@ -96,10 +120,20 @@ void UAsobiWebSocket::LeaveMatch()
 	Send(TEXT("match.leave"), nullptr);
 }
 
-void UAsobiWebSocket::MatchmakerAdd(const FString& Mode, const TArray<FString>& Party)
+void UAsobiWebSocket::MatchmakerAdd(const FString& Mode, const FString& PropertiesJson, const TArray<FString>& Party)
 {
 	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
 	Payload->SetStringField(TEXT("mode"), Mode);
+
+	if (!PropertiesJson.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> PropsObj;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+		if (FJsonSerializer::Deserialize(Reader, PropsObj) && PropsObj.IsValid())
+		{
+			Payload->SetObjectField(TEXT("properties"), PropsObj);
+		}
+	}
 
 	TArray<TSharedPtr<FJsonValue>> PartyArr;
 	for (const FString& P : Party)
@@ -281,10 +315,25 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 	{
 	case EventId::SessionConnected:
 	case EventId::SessionHeartbeat:
-	case EventId::Error:
 		// Intentionally surfaced only via the raw OnMessage above —
 		// matches the per-SDK contract (love2d, godot, etc).
 		break;
+
+	case EventId::Error:
+	{
+		// Also surfaced via raw OnMessage above; here we additionally detect
+		// auth-fatal reasons so callers can force a re-login.
+		FString Reason;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			(*PayloadObj)->TryGetStringField(TEXT("reason"), Reason);
+		}
+		if (Reason == TEXT("invalid_token") || Reason == TEXT("session_revoked"))
+		{
+			OnAuthExpired.Broadcast();
+		}
+		break;
+	}
 
 	case EventId::MatchState:
 		OnMatchState.Broadcast(PayloadStr);

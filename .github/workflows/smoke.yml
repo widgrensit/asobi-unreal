@@ -208,10 +208,10 @@ jobs:
             echo "register did not return 2xx"
             exit 1
           fi
-          token=$(echo "$payload" | jq -r '.session_token // empty')
+          token=$(echo "$payload" | jq -r '.access_token // empty')
           pid=$(echo "$payload" | jq -r '.player_id // empty')
           if [ -z "$token" ] || [ -z "$pid" ]; then
-            echo "register response missing session_token or player_id"
+            echo "register response missing access_token or player_id"
             exit 1
           fi
           echo "got player_id=$pid"

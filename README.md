@@ -54,11 +54,29 @@ WebSocket->OnMatchJoined.AddDynamic(this, &UMyClass::OnReady);
 
 See the [WebSocket protocol guide](https://github.com/widgrensit/asobi/blob/main/guides/websocket-protocol.md) for the full event surface.
 
+### Guest / anonymous auth
+
+Sign in without a username by pairing a stable device id with a device secret. The secret must be the base64 of at least 32 CSPRNG bytes, generated and stored by your game (the SDK passes it through, it does not generate or persist it for you). The same `(DeviceId, DeviceSecret)` pair resumes the same guest player on a later launch; store both securely on device.
+
+```cpp
+Auth->Guest(DeviceId, DeviceSecret,
+	FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens)
+	{
+		// Tokens are stored on the client automatically, same as Login/OAuth.
+	}));
+```
+
+Later, convert the guest into a permanent account. The call is authenticated with the guest's current access token and replaces the stored token pair with the claimed account's:
+
+```cpp
+Auth->UpgradeGuest(TEXT("player1"), TEXT("secret"), OnUpgrade);
+```
+
 ## Features
 
 | Subsystem | REST | WebSocket |
 |---|---|---|
-| Auth (register, login, refresh, OAuth, IAP) | ✓ | — |
+| Auth (register, login, guest, refresh, OAuth, IAP) | ✓ | — |
 | Players & stats | ✓ | — |
 | Matches & matchmaker | ✓ | ✓ |
 | Worlds (MMO-scale, terrain streaming) | ✓ | ✓ |

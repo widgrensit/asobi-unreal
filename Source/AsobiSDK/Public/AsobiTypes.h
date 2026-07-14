@@ -39,6 +39,10 @@ struct FAsobiAuthTokens
 	UPROPERTY(BlueprintReadOnly) FString AccessToken;
 	UPROPERTY(BlueprintReadOnly) FString RefreshToken;
 	UPROPERTY(BlueprintReadOnly) FString PlayerId;
+	UPROPERTY(BlueprintReadOnly) FString Username;
+	UPROPERTY(BlueprintReadOnly) bool bCreated = false;
+	UPROPERTY(BlueprintReadOnly) bool bGuest = false;
+	UPROPERTY(BlueprintReadOnly) bool bUpgraded = false;
 };
 
 USTRUCT(BlueprintType)

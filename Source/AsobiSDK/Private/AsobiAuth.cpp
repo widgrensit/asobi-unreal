@@ -60,6 +60,32 @@ void UAsobiAuth::OAuthAuthenticate(const FString& Provider, const FString& Provi
 		}));
 }
 
+void UAsobiAuth::Guest(const FString& DeviceId, const FString& DeviceSecret, const FOnAsobiAuthResponse& Callback)
+{
+	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
+	Body->SetStringField(TEXT("device_id"), DeviceId);
+	Body->SetStringField(TEXT("device_secret"), DeviceSecret);
+
+	Client->Post(TEXT("/api/v1/auth/guest"), Body,
+		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+		{
+			HandleAuthResponse(bSuccess, Response, Callback);
+		}));
+}
+
+void UAsobiAuth::UpgradeGuest(const FString& Username, const FString& Password, const FOnAsobiAuthResponse& Callback)
+{
+	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
+	Body->SetStringField(TEXT("username"), Username);
+	Body->SetStringField(TEXT("password"), Password);
+
+	Client->Post(TEXT("/api/v1/auth/guest/upgrade"), Body,
+		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+		{
+			HandleAuthResponse(bSuccess, Response, Callback);
+		}));
+}
+
 void UAsobiAuth::Logout(const FOnAsobiResponse& Callback)
 {
 	if (!Client)

@@ -31,6 +31,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
 	void OAuthAuthenticate(const FString& Provider, const FString& ProviderToken, const FOnAsobiAuthResponse& Callback);
 
+	// POST /api/v1/auth/guest (no auth header). Anonymous device-backed
+	// create-or-resume. DeviceSecret is the caller-supplied base64 of >=32
+	// CSPRNG bytes; store it securely and pass the same pair to resume.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
+	void Guest(const FString& DeviceId, const FString& DeviceSecret, const FOnAsobiAuthResponse& Callback);
+
+	// POST /api/v1/auth/guest/upgrade (authenticated). Claims the current
+	// unclaimed guest with a username/password; replaces the stored token pair.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
+	void UpgradeGuest(const FString& Username, const FString& Password, const FOnAsobiAuthResponse& Callback);
+
 	// POST /api/v1/auth/logout (authenticated). Sends the stored refresh token
 	// so the backend revokes the whole family, then clears local tokens.
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")

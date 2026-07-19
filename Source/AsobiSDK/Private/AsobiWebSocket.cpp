@@ -348,6 +348,7 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		OnMatchMatched.Broadcast(PayloadStr);
 		OnMatchEvent.Broadcast(TEXT("matched"), PayloadStr);
 		break;
+	case EventId::MatchList:
 	case EventId::MatchFinished:
 	case EventId::MatchMatchmakerExpired:
 	case EventId::MatchMatchmakerFailed:

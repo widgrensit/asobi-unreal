@@ -152,6 +152,10 @@ void UAsobiAuth::HandleAuthResponse(bool bSuccess, const FString& ResponseBody, 
 			Json->TryGetStringField(TEXT("access_token"), Tokens.AccessToken);
 			Json->TryGetStringField(TEXT("refresh_token"), Tokens.RefreshToken);
 			Json->TryGetStringField(TEXT("player_id"), Tokens.PlayerId);
+			Json->TryGetStringField(TEXT("username"), Tokens.Username);
+			Json->TryGetBoolField(TEXT("created"), Tokens.bCreated);
+			Json->TryGetBoolField(TEXT("guest"), Tokens.bGuest);
+			Json->TryGetBoolField(TEXT("upgraded"), Tokens.bUpgraded);
 
 			// Auto-store tokens on the client
 			if (Client)

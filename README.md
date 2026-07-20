@@ -63,6 +63,8 @@ Auth->Guest(DeviceId, DeviceSecret,
 	FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens)
 	{
 		// Tokens are stored on the client automatically, same as Login/OAuth.
+		// Tokens.bCreated distinguishes a new guest (true) from a resumed one (false);
+		// Tokens.bGuest is true and Tokens.Username carries the assigned guest name.
 	}));
 ```
 
@@ -71,6 +73,8 @@ Later, convert the guest into a permanent account. The call is authenticated wit
 ```cpp
 Auth->UpgradeGuest(TEXT("player1"), TEXT("secret"), OnUpgrade);
 ```
+
+On success the returned `FAsobiAuthTokens` has `bUpgraded == true`.
 
 ## Features
 

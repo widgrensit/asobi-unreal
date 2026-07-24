@@ -6,6 +6,8 @@
 
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnAsobiAuthResponse, bool, bSuccess, const FAsobiAuthTokens&, Tokens);
 
+struct FAsobiDeviceOptions;
+
 UCLASS(BlueprintType)
 class ASOBISDK_API UAsobiAuth : public UObject
 {
@@ -36,6 +38,20 @@ public:
 	// CSPRNG bytes; store it securely and pass the same pair to resume.
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
 	void Guest(const FString& DeviceId, const FString& DeviceSecret, const FOnAsobiAuthResponse& Callback);
+
+	// Opt-in convenience over Guest(): loads (or generates + persists) a stable
+	// device credential pair and signs in as a guest in one call. The same pair
+	// resumes the same player on a later launch. Uses a best-effort byte source
+	// and a SaveGame-backed store; to supply a custom RNG or storage, call
+	// AsobiDevice::LoadOrCreate yourself and pass the pair to Guest().
+	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
+	void GuestDevice(const FOnAsobiAuthResponse& Callback);
+
+	// C++-only variant of GuestDevice() that takes explicit device options
+	// (custom RNG / storage slot / injected store). GuestDevice() forwards to
+	// this with defaults. Not a UFUNCTION: FAsobiDeviceOptions is not a
+	// Blueprint type.
+	void GuestDeviceWithOptions(const FAsobiDeviceOptions& Options, const FOnAsobiAuthResponse& Callback);
 
 	// POST /api/v1/auth/guest/upgrade (authenticated). Claims the current
 	// unclaimed guest with a username/password; replaces the stored token pair.

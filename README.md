@@ -76,6 +76,39 @@ Auth->UpgradeGuest(TEXT("player1"), TEXT("secret"), OnUpgrade);
 
 On success the returned `FAsobiAuthTokens` has `bUpgraded == true`.
 
+#### Guest device (managed credentials)
+
+`GuestDevice` is the one-call version: it generates the `(DeviceId, DeviceSecret)` pair on first run, persists it to a `USaveGame` slot, reuses it on every later launch, and signs in — so you never hand-roll base64, storage, or the >=32-byte rule.
+
+```cpp
+Auth->GuestDevice(
+	FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens)
+	{
+		if (!bOk) return;
+		// Tokens.bCreated == true on the very first sign-in (brand-new guest),
+		// false when the persisted pair resumed an existing player.
+	}));
+```
+
+To forget the guest ("switch account" / "play as someone else" / a local "delete my data"), erase the stored pair — the next `GuestDevice` mints a brand-new guest. This is local-only; pair it with `Logout` to end the current session, or call `UpgradeGuest` first to keep the player:
+
+```cpp
+#include "AsobiDevice.h"
+
+AsobiDevice::Clear();
+```
+
+The default byte source is **best-effort**, not a guaranteed CSPRNG on every platform (UE ships no portable one). For higher assurance, or to choose your own storage slot, drive `AsobiDevice::LoadOrCreate` with options and pass the pair to `Guest()`:
+
+```cpp
+FAsobiDeviceOptions Options;
+Options.SlotName = TEXT("MyGameGuest");
+Options.RandomBytes = [](int32 NumBytes) { return MyPlatformCsprng(NumBytes); };
+
+const FAsobiDeviceCredentials Creds = AsobiDevice::LoadOrCreate(Options);
+Auth->Guest(Creds.DeviceId, Creds.DeviceSecret, OnGuest);
+```
+
 ## Features
 
 | Subsystem | REST | WebSocket |

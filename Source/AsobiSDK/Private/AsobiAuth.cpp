@@ -1,4 +1,5 @@
 #include "AsobiAuth.h"
+#include "AsobiDevice.h"
 
 void UAsobiAuth::Init(UAsobiClient* InClient)
 {
@@ -71,6 +72,17 @@ void UAsobiAuth::Guest(const FString& DeviceId, const FString& DeviceSecret, con
 		{
 			HandleAuthResponse(bSuccess, Response, Callback);
 		}));
+}
+
+void UAsobiAuth::GuestDevice(const FOnAsobiAuthResponse& Callback)
+{
+	GuestDeviceWithOptions(FAsobiDeviceOptions(), Callback);
+}
+
+void UAsobiAuth::GuestDeviceWithOptions(const FAsobiDeviceOptions& Options, const FOnAsobiAuthResponse& Callback)
+{
+	const FAsobiDeviceCredentials Creds = AsobiDevice::LoadOrCreate(Options);
+	Guest(Creds.DeviceId, Creds.DeviceSecret, Callback);
 }
 
 void UAsobiAuth::UpgradeGuest(const FString& Username, const FString& Password, const FOnAsobiAuthResponse& Callback)

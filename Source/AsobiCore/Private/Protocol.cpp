@@ -11,7 +11,7 @@ namespace
 {
 
 // Single canonical table of (wire-string, EventId) pairs. Linear scan —
-// the corpus is 33 entries, branch-predictor-friendly, and avoids
+// the corpus is 34 entries, branch-predictor-friendly, and avoids
 // dragging in <unordered_map> + hash overhead.
 struct Entry
 {

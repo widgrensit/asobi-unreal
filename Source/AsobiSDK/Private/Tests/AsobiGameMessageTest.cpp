@@ -30,6 +30,8 @@
 #include "AsobiGameMessageAutomationProxy.h"
 
 #include "Misc/AutomationTest.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -65,6 +67,8 @@ bool FAsobiGameMessageTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("string case: Message.AsString"),
 				Proxy->LastMessage.Message->AsString(), FString(TEXT("jij bent speler nummer 3")));
 		}
+		TestEqual(TEXT("string case: MessageJson"), Proxy->LastMessage.MessageJson,
+			FString(TEXT("\"jij bent speler nummer 3\"")));
 	}
 
 	// Case 2: numeric payload — must not be silently coerced to a string.
@@ -84,6 +88,7 @@ bool FAsobiGameMessageTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("number case: Message.AsNumber"),
 				Proxy->LastMessage.Message->AsNumber(), 3.0);
 		}
+		TestEqual(TEXT("number case: MessageJson"), Proxy->LastMessage.MessageJson, FString(TEXT("3")));
 	}
 
 	// Case 3: nested object payload — must round-trip in full, not truncate.
@@ -121,6 +126,56 @@ bool FAsobiGameMessageTest::RunTest(const FString& Parameters)
 				}
 			}
 		}
+
+		// MessageJson must round-trip the same object — re-parse rather than
+		// exact-string-match since key order is not a contract.
+		TestFalse(TEXT("object case: MessageJson is non-empty"), Proxy->LastMessage.MessageJson.IsEmpty());
+		TSharedPtr<FJsonObject> Reparsed;
+		TSharedRef<TJsonReader<>> ReparseReader = TJsonReaderFactory<>::Create(Proxy->LastMessage.MessageJson);
+		TestTrue(TEXT("object case: MessageJson re-parses"),
+			FJsonSerializer::Deserialize(ReparseReader, Reparsed) && Reparsed.IsValid());
+		if (Reparsed.IsValid())
+		{
+			double Round = 0.0;
+			TestTrue(TEXT("object case: MessageJson has `round`"), Reparsed->TryGetNumberField(TEXT("round"), Round));
+			TestEqual(TEXT("object case: MessageJson round == 3"), Round, 3.0);
+		}
+	}
+
+	// Case 4: `message` key entirely absent from the payload object. Message
+	// must stay an invalid (null) TSharedPtr and MessageJson must stay empty
+	// — distinct from case 5's explicit null.
+	{
+		Proxy->bFired = false;
+		Proxy->LastMessage = FAsobiGameMessage();
+
+		const FString Fixture = TEXT("{\"type\":\"game.message\",\"payload\":{}}");
+		Socket->HandleMessageForTest(Fixture);
+
+		TestTrue(TEXT("absent case: OnGameMessage fired"), Proxy->bFired);
+		TestFalse(TEXT("absent case: Message is invalid"), Proxy->LastMessage.Message.IsValid());
+		TestTrue(TEXT("absent case: MessageJson is empty"), Proxy->LastMessage.MessageJson.IsEmpty());
+	}
+
+	// Case 5: `message` explicitly present as JSON null. Unlike the absent
+	// case, Message is a *valid* TSharedPtr whose Type is EJson::Null, and
+	// MessageJson carries the literal text "null".
+	{
+		Proxy->bFired = false;
+		Proxy->LastMessage = FAsobiGameMessage();
+
+		const FString Fixture = TEXT("{\"type\":\"game.message\",\"payload\":{\"message\":null}}");
+		Socket->HandleMessageForTest(Fixture);
+
+		TestTrue(TEXT("null case: OnGameMessage fired"), Proxy->bFired);
+		TestTrue(TEXT("null case: Message is valid"), Proxy->LastMessage.Message.IsValid());
+		if (Proxy->LastMessage.Message.IsValid())
+		{
+			TestTrue(TEXT("null case: Message.Type == Null"),
+				Proxy->LastMessage.Message->Type == EJson::Null);
+		}
+		TestEqual(TEXT("null case: MessageJson == \"null\""),
+			Proxy->LastMessage.MessageJson, FString(TEXT("null")));
 	}
 
 	Proxy->RemoveFromRoot();

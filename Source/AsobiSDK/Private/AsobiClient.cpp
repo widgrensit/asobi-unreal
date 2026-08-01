@@ -666,6 +666,12 @@ FAsobiGameMessage UAsobiClient::ParseGameMessage(const TSharedPtr<FJsonObject>& 
 	if (Found)
 	{
 		M.Message = *Found;
+		if (M.Message.IsValid())
+		{
+			TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+				TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&M.MessageJson);
+			FJsonSerializer::Serialize(M.Message.ToSharedRef(), FString(), Writer);
+		}
 	}
 	return M;
 }

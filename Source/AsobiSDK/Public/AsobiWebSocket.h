@@ -41,6 +41,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldEvent, const FString&,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiDmMessage, const FAsobiDirectMessage&, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiDmSent, const FString&, ChannelId);
 
+// Dev-mode Lua script errors (server-gated behind ASOBI_DEV_ERRORS=true)
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiGameError, const FAsobiGameError&, Error);
+
 UCLASS(BlueprintType)
 class ASOBISDK_API UAsobiWebSocket : public UObject
 {
@@ -232,6 +235,20 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiDmSent OnDmSent;
+
+	// Fires on a dev-mode Lua script error triggered by this player's input.
+	// Only emitted when the backend runs with ASOBI_DEV_ERRORS=true;
+	// production keeps script errors server-side. Surface these in a dev
+	// console/HUD rather than treating them as fatal.
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiGameError OnGameError;
+
+#if WITH_DEV_AUTOMATION_TESTS
+	// Test-only entry point that drives the same dispatch path the live
+	// WebSocket message callback uses. Lets unit tests feed canonical
+	// fixtures through HandleMessage without standing up a real socket.
+	void HandleMessageForTest(const FString& MessageString) { HandleMessage(MessageString); }
+#endif
 
 private:
 	void Send(const FString& Type, const TSharedPtr<FJsonObject>& Payload);

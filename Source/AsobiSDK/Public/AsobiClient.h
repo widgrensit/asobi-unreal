@@ -91,6 +91,7 @@ public:
 	static FAsobiWorldInfo ParseWorldInfo(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiWorldTerrainChunk ParseWorldTerrain(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiDirectMessage ParseDirectMessage(const TSharedPtr<FJsonObject>& Json);
+	static FAsobiGameError ParseGameError(const TSharedPtr<FJsonObject>& Json);
 
 private:
 	void SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback);

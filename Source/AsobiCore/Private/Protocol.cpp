@@ -26,6 +26,7 @@ constexpr Entry kTable[] = {
     {"dm.message",               EventId::DmMessage},
     {"dm.sent",                  EventId::DmSent},
     {"error",                    EventId::Error},
+    {"game.error",               EventId::GameError},
     {"match.finished",           EventId::MatchFinished},
     {"match.joined",             EventId::MatchJoined},
     {"match.left",               EventId::MatchLeft},

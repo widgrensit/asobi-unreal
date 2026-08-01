@@ -1,6 +1,6 @@
 // Dispatch unit test for AsobiCore.
 //
-// Loads every fixture from the canonical 33-event corpus
+// Loads every fixture from the canonical 34-event corpus
 // (Source/AsobiSDK/Tests/Fixtures/) and asserts:
 //   1. Each fixture's `type` string parses to the expected EventId.
 //   2. Every EventId in AsobiCore has a vendored fixture (no stale ids).

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonValue.h"
 #include "AsobiTypes.generated.h"
 
 USTRUCT(BlueprintType)
@@ -344,4 +345,19 @@ struct FAsobiGameError
 	UPROPERTY(BlueprintReadOnly) FString Callback;
 	UPROPERTY(BlueprintReadOnly) FString Script;
 	UPROPERTY(BlueprintReadOnly) FString Message;
+};
+
+// A message pushed by a Lua game script via `game.send(player_id, message)`.
+// Unlike FAsobiGameError, this is emitted unconditionally in production.
+// `message` can be any JSON value the script chooses to send — a string, a
+// number, or a nested object/array — so it is carried as a raw parsed JSON
+// value rather than coerced/truncated to FString. TSharedPtr<FJsonValue> is
+// not UPROPERTY-reflectable, so Message is a native-only field; Blueprint
+// consumers should serialize it (e.g. via FJsonSerializer) if they need it.
+USTRUCT(BlueprintType)
+struct FAsobiGameMessage
+{
+	GENERATED_BODY()
+
+	TSharedPtr<FJsonValue> Message;
 };

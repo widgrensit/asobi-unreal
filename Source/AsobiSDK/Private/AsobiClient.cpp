@@ -654,3 +654,18 @@ FAsobiGameError UAsobiClient::ParseGameError(const TSharedPtr<FJsonObject>& Json
 	E.Message = GetStr(Json, TEXT("message"));
 	return E;
 }
+
+FAsobiGameMessage UAsobiClient::ParseGameMessage(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiGameMessage M;
+	if (!Json.IsValid()) return M;
+	// `message` can be any JSON value (string/number/object/array) - keep it
+	// as a raw FJsonValue rather than coercing to FString, which would
+	// stringify numbers and truncate/garble nested tables.
+	const TSharedPtr<FJsonValue>* Found = Json->Values.Find(TEXT("message"));
+	if (Found)
+	{
+		M.Message = *Found;
+	}
+	return M;
+}

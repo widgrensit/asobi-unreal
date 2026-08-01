@@ -12,7 +12,7 @@
 #      (best-effort syntax check via clang with a tiny UE-stub include
 #      path — full UnrealHeaderTool/UBT compilation is NOT run here).
 #   3. The vendored canonical protocol fixtures under
-#      Source/AsobiSDK/Tests/Fixtures/ match the 33-event corpus
+#      Source/AsobiSDK/Tests/Fixtures/ match the 34-event corpus
 #      (catches drift if a fixture is added/removed without updating
 #      the test). Belt-and-suspenders with the asobi-core job.
 #   4. The backend the plugin is coded against (widgrensit/sdk_demo_backend) still
@@ -130,16 +130,16 @@ jobs:
           echo "Note: full UBT compile is out of scope for hosted CI."
           echo "clang-format parse check above is the primary syntax gate."
 
-      - name: dispatch fixtures match the canonical 33-event corpus
+      - name: dispatch fixtures match the canonical 34-event corpus
         # The Asobi.Dispatch automation test enumerates one sub-test per
-        # canonical server event (33). Vendored fixtures live under
+        # canonical server event (34). Vendored fixtures live under
         # Source/AsobiSDK/Tests/Fixtures/. Drift here (a fixture added
         # upstream but not vendored, or vice versa) silently breaks the
         # dispatch test's assumptions, so we check the corpus on every PR.
         run: |
           set -euo pipefail
           expected="chat.joined chat.left chat.message dm.message dm.sent error \
-            match.finished match.joined match.left match.list match.matched \
+            game.error match.finished match.joined match.left match.list match.matched \
             match.matchmaker_expired match.matchmaker_failed match.state \
             match.vote_result match.vote_start match.vote_tally match.vote_vetoed \
             matchmaker.queued matchmaker.removed notification.new presence.updated \
@@ -160,7 +160,7 @@ jobs:
             diff <(echo "$want" | tr ' ' '\n') <(echo "$actual" | tr ' ' '\n') || true
             exit 1
           fi
-          echo "fixture corpus matches: 32 events"
+          echo "fixture corpus matches: 34 events"
 
   backend-contract:
     name: sdk_demo_backend wire-protocol contract

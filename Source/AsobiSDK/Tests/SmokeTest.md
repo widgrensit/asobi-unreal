@@ -14,7 +14,7 @@ Spec: [widgrensit/sdk_demo_backend/SMOKE.md](https://github.com/widgrensit/sdk_d
 
 ## AsobiCore dispatch (`asobi-core` CI job)
 
-Pure unit test (no backend, no socket, no Unreal Engine) that loads every canonical asobi protocol fixture (32 server-event types) and asserts each round-trips through `asobi::core::ParseEventId` to its expected `EventId`. Catches the doc-vs-server drift class of bugs (e.g. server emits `match.matched` but the SDK only listens for `matchmaker.matched`).
+Pure unit test (no backend, no socket, no Unreal Engine) that loads every canonical asobi protocol fixture (34 server-event types) and asserts each round-trips through `asobi::core::ParseEventId` to its expected `EventId`. Catches the doc-vs-server drift class of bugs (e.g. server emits `match.matched` but the SDK only listens for `matchmaker.matched`).
 
 This lives in `Source/AsobiCore/` as a plain C++17 doctest binary that runs on stock CI runners — no Unreal Editor required. Mirrors the dispatch tests in the love2d, godot, defold, dart, and js SDKs. Run locally with:
 
@@ -26,7 +26,7 @@ cd build && ctest --output-on-failure
 
 The UE-side `UAsobiWebSocket::HandleMessage` calls into `asobi::core::ParseEventId` for the dispatch decision; AsobiCore is the canonical truth for "which server events exist." Drift between the C++ enum and the fixture corpus fails the `asobi-core` job on every PR.
 
-Fixtures are vendored under `Source/AsobiSDK/Tests/Fixtures/` from `asobi/priv/protocol/fixtures/`. The CI fixture-corpus check in `.github/workflows/smoke.yml` keeps the directory listing in sync with the canonical 32-event list as a belt-and-suspenders check next to the AsobiCore test.
+Fixtures are vendored under `Source/AsobiSDK/Tests/Fixtures/` from `asobi/priv/protocol/fixtures/`. The CI fixture-corpus check in `.github/workflows/smoke.yml` keeps the directory listing in sync with the canonical 34-event list as a belt-and-suspenders check next to the AsobiCore test.
 
 ## What's in this directory
 
@@ -35,7 +35,7 @@ Fixtures are vendored under `Source/AsobiSDK/Tests/Fixtures/` from `asobi/priv/p
 | `Source/AsobiSDK/Private/Tests/AsobiSmokeTest.cpp` | UE Automation entry point (`Asobi.Smoke`) — runs from the editor or `UE5Editor-Cmd`. |
 | `Source/AsobiSDK/Public/AsobiSmokeTest.h`, `Source/AsobiSDK/Private/AsobiSmokeTest.cpp` | `UAsobiSmokeTest` UObject — the actual test runner, callable from C++ or Blueprint. |
 | `Source/AsobiCore/Tests/DispatchTest.cpp` | doctest dispatch test — runs in the `asobi-core` CI job. |
-| `Source/AsobiSDK/Tests/Fixtures/*.json` | Canonical server-event fixtures (32). |
+| `Source/AsobiSDK/Tests/Fixtures/*.json` | Canonical server-event fixtures (34). |
 
 The Automation test is a thin wrapper that drives `UAsobiSmokeTest` and asserts on its `OnResult` delegate.
 

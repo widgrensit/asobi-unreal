@@ -332,3 +332,16 @@ struct FAsobiDirectMessage
 	UPROPERTY(BlueprintReadOnly) FString Content;
 	UPROPERTY(BlueprintReadOnly) FString SentAt;
 };
+
+// A Lua game-script callback error, surfaced to the player whose input
+// triggered it. Dev-mode only (server-gated behind ASOBI_DEV_ERRORS=true) —
+// production keeps script errors server-side.
+USTRUCT(BlueprintType)
+struct FAsobiGameError
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) FString Callback;
+	UPROPERTY(BlueprintReadOnly) FString Script;
+	UPROPERTY(BlueprintReadOnly) FString Message;
+};

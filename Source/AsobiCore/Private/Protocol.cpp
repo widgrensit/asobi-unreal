@@ -11,7 +11,7 @@ namespace
 {
 
 // Single canonical table of (wire-string, EventId) pairs. Linear scan —
-// the corpus is 33 entries, branch-predictor-friendly, and avoids
+// the corpus is 34 entries, branch-predictor-friendly, and avoids
 // dragging in <unordered_map> + hash overhead.
 struct Entry
 {
@@ -26,6 +26,7 @@ constexpr Entry kTable[] = {
     {"dm.message",               EventId::DmMessage},
     {"dm.sent",                  EventId::DmSent},
     {"error",                    EventId::Error},
+    {"game.error",               EventId::GameError},
     {"match.finished",           EventId::MatchFinished},
     {"match.joined",             EventId::MatchJoined},
     {"match.left",               EventId::MatchLeft},

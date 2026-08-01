@@ -644,3 +644,13 @@ FAsobiDirectMessage UAsobiClient::ParseDirectMessage(const TSharedPtr<FJsonObjec
 	M.SentAt = GetStr(Json, TEXT("sent_at"));
 	return M;
 }
+
+FAsobiGameError UAsobiClient::ParseGameError(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiGameError E;
+	if (!Json.IsValid()) return E;
+	E.Callback = GetStr(Json, TEXT("callback"));
+	E.Script = GetStr(Json, TEXT("script"));
+	E.Message = GetStr(Json, TEXT("message"));
+	return E;
+}

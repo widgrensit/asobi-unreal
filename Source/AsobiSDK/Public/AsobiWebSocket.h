@@ -44,6 +44,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiDmSent, const FString&, Chan
 // Dev-mode Lua script errors (server-gated behind ASOBI_DEV_ERRORS=true)
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiGameError, const FAsobiGameError&, Error);
 
+// Messages pushed by a Lua game script via game.send(player_id, message).
+// Emitted unconditionally in production (unlike FOnAsobiGameError).
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiGameMessage, const FAsobiGameMessage&, Message);
+
 UCLASS(BlueprintType)
 class ASOBISDK_API UAsobiWebSocket : public UObject
 {
@@ -242,6 +246,11 @@ public:
 	// console/HUD rather than treating them as fatal.
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiGameError OnGameError;
+
+	// Fires on a game.message push (game.send/2 from a Lua game script).
+	// Unlike OnGameError, this fires unconditionally in production.
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiGameMessage OnGameMessage;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	// Test-only entry point that drives the same dispatch path the live

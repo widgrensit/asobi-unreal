@@ -11,7 +11,7 @@
 // every PR (matches the love2d, js, godot, defold, dart per-SDK gate).
 //
 // Mirrors:
-//   - asobi/priv/protocol/fixtures/  (canonical 34-event corpus)
+//   - asobi/priv/protocol/fixtures/  (canonical 35-event corpus)
 //   - asobi-love2d/asobi/realtime.lua SERVER_EVENTS
 //   - the dispatch table in AsobiSDK/Private/AsobiWebSocket.cpp
 
@@ -37,6 +37,7 @@ enum class EventId
     DmSent,
     Error,
     GameError,
+    GameMessage,
     MatchFinished,
     MatchJoined,
     MatchLeft,
@@ -68,7 +69,7 @@ enum class EventId
 
 // Canonical event count — keep in sync with EventId enum and the fixture
 // corpus. Compile-time constant so tests can assert without runtime work.
-constexpr std::size_t kEventCount = 34;
+constexpr std::size_t kEventCount = 35;
 
 // Maps a wire-`type` string ("match.matched", "world.tick", ...) to its
 // EventId. Returns nullopt if the type is unknown.

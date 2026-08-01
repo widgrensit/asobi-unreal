@@ -346,6 +346,17 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		break;
 	}
 
+	case EventId::GameMessage:
+	{
+		FAsobiGameMessage Message;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			Message = UAsobiClient::ParseGameMessage(*PayloadObj);
+		}
+		OnGameMessage.Broadcast(Message);
+		break;
+	}
+
 	case EventId::MatchState:
 		OnMatchState.Broadcast(PayloadStr);
 		break;

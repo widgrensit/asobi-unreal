@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonValue.h"
 #include "AsobiTypes.generated.h"
 
 USTRUCT(BlueprintType)
@@ -344,4 +345,32 @@ struct FAsobiGameError
 	UPROPERTY(BlueprintReadOnly) FString Callback;
 	UPROPERTY(BlueprintReadOnly) FString Script;
 	UPROPERTY(BlueprintReadOnly) FString Message;
+};
+
+// A message pushed by a Lua game script via `game.send(player_id, message)`.
+// Unlike FAsobiGameError, this is emitted unconditionally in production.
+// `message` can be any JSON value the script chooses to send — a string, a
+// number, or a nested object/array — so it is carried as a raw parsed JSON
+// value rather than coerced/truncated to FString. TSharedPtr<FJsonValue> is
+// not UPROPERTY-reflectable, so Message is a native-only field for C++
+// consumers; Blueprint consumers should read MessageJson instead.
+//
+// Contract: only the `message` key of the payload object is read — sibling
+// fields the server might add to that object later are not currently
+// captured. If the key is absent, Message is an invalid (null) TSharedPtr
+// and MessageJson is empty. If the key is explicitly `null`, Message is a
+// *valid* TSharedPtr whose Type is EJson::Null, and MessageJson is the
+// literal string "null" — these two cases are distinguishable in C++ via
+// Message.IsValid(), but not from MessageJson alone.
+USTRUCT(BlueprintType)
+struct FAsobiGameMessage
+{
+	GENERATED_BODY()
+
+	// Raw JSON text of the `message` field, for Blueprint consumers.
+	UPROPERTY(BlueprintReadOnly, Category = "Asobi")
+	FString MessageJson;
+
+	// Native-only; unchanged, for C++ consumers.
+	TSharedPtr<FJsonValue> Message;
 };

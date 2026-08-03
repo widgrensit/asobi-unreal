@@ -7,6 +7,9 @@
 #      vendored fixture must round-trip through AsobiCore::ParseEventId
 #      to its EventId, and every EventId must have a fixture. Mirrors the
 #      dispatch tests in the love2d, godot, defold, dart, and js SDKs.
+#      The same job also gates the auth response mapping (token parsing +
+#      HTTP-status/reason error mapping) that UAsobiAuth marshals into
+#      FAsobiAuthTokens / FAsobiError.
 #   2. The smoke automation source (Source/AsobiSDK/Private/Tests/
 #      AsobiSmokeTest.cpp) and the runner UObject parse as C++
 #      (best-effort syntax check via clang with a tiny UE-stub include
@@ -71,7 +74,7 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      - name: Run dispatch tests
+      - name: Run AsobiCore tests (dispatch + auth response mapping)
         working-directory: build
         run: ctest --output-on-failure
 
@@ -115,6 +118,8 @@ jobs:
           #define DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(...)
           #define DECLARE_DYNAMIC_MULTICAST_DELEGATE(...)
           #define DECLARE_DYNAMIC_DELEGATE_TwoParams(...)
+          #define DECLARE_DYNAMIC_DELEGATE_ThreeParams(...)
+          #define DECLARE_DELEGATE_ThreeParams(...)
           STUB
           # We compile *just* the public smoke header against the stub —
           # excluding the .generated.h, which is UBT-produced. The .cpp's

@@ -24,6 +24,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_library(AsobiCore STATIC
+    Private/Auth.cpp
+    Private/Json.cpp
     Private/Protocol.cpp
 )
 target_include_directories(AsobiCore PUBLIC Public)
@@ -48,3 +50,13 @@ target_compile_definitions(asobi_core_dispatch_test PRIVATE
 
 add_test(NAME asobi_core_dispatch
          COMMAND asobi_core_dispatch_test)
+
+# Auth response mapping (tokens + error status/reason). Needs no fixtures.
+add_executable(asobi_core_auth_test
+    Tests/AuthTest.cpp
+)
+target_link_libraries(asobi_core_auth_test PRIVATE AsobiCore)
+target_include_directories(asobi_core_auth_test PRIVATE Vendor)
+
+add_test(NAME asobi_core_auth
+         COMMAND asobi_core_auth_test)

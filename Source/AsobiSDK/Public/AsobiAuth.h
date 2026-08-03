@@ -4,7 +4,12 @@
 #include "AsobiClient.h"
 #include "AsobiAuth.generated.h"
 
-DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnAsobiAuthResponse, bool, bSuccess, const FAsobiAuthTokens&, Tokens);
+// On failure Tokens is empty and Error carries the HTTP status plus the
+// backend's stable snake_case reason (`weak_device_secret`,
+// `guest_capacity_reached`, `device_already_registered`, `guest_revoked`,
+// `username_taken`, `validation_failed`, ...). Error.StatusCode is 0 when
+// the request never got a response (Error.Reason == "network_error").
+DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnAsobiAuthResponse, bool, bSuccess, const FAsobiAuthTokens&, Tokens, const FAsobiError&, Error);
 
 struct FAsobiDeviceOptions;
 
@@ -81,7 +86,7 @@ public:
 	void VerifyGoogleIAP(const FString& PurchaseToken, const FString& ProductId, const FOnAsobiResponse& Callback);
 
 private:
-	void HandleAuthResponse(bool bSuccess, const FString& ResponseBody, const FOnAsobiAuthResponse& Callback);
+	void HandleAuthResponse(int32 StatusCode, const FString& ResponseBody, const FOnAsobiAuthResponse& Callback);
 
 	UPROPERTY()
 	UAsobiClient* Client = nullptr;

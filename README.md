@@ -60,11 +60,16 @@ Sign in without a username by pairing a stable device id with a device secret. T
 
 ```cpp
 Auth->Guest(DeviceId, DeviceSecret,
-	FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens)
+	FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens, const FAsobiError& Error)
 	{
 		// Tokens are stored on the client automatically, same as Login/OAuth.
 		// Tokens.bCreated distinguishes a new guest (true) from a resumed one (false);
 		// Tokens.bGuest is true and Tokens.Username carries the assigned guest name.
+		if (!bOk)
+		{
+			// Error.StatusCode / Error.Reason, e.g. 400 weak_device_secret,
+			// 409 device_already_registered, 503 guest_capacity_reached.
+		}
 	}));
 ```
 
@@ -76,13 +81,29 @@ Auth->UpgradeGuest(TEXT("player1"), TEXT("secret"), OnUpgrade);
 
 On success the returned `FAsobiAuthTokens` has `bUpgraded == true`.
 
+### Auth failures
+
+Every auth entrypoint (`Register`, `Login`, `Refresh`, `OAuthAuthenticate`, `Guest`, `GuestDevice`, `UpgradeGuest`) reports failures through the third callback parameter:
+
+```cpp
+FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens, const FAsobiError& Error)
+{
+	if (!bOk)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("auth failed: %d %s"), Error.StatusCode, *Error.Reason);
+	}
+});
+```
+
+`Error.Reason` is the backend's stable snake_case code -- `weak_device_secret`, `invalid_device_secret`, `guest_revoked`, `guest_capacity_reached`, `device_already_registered`, `not_an_unclaimed_guest`, `username_taken`, `invalid_credentials`, `validation_failed`, ... -- so you can branch on it rather than showing one generic message. Three reasons are produced by the SDK itself: `network_error` (no response, `StatusCode == 0`), `malformed_response` (2xx with no usable access token) and `unknown_error` (a non-2xx body with no `error` field).
+
 #### Guest device (managed credentials)
 
 `GuestDevice` is the one-call version: it generates the `(DeviceId, DeviceSecret)` pair on first run, persists it to a `USaveGame` slot, reuses it on every later launch, and signs in — so you never hand-roll base64, storage, or the >=32-byte rule.
 
 ```cpp
 Auth->GuestDevice(
-	FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens)
+	FOnAsobiAuthResponse::CreateLambda([](bool bOk, const FAsobiAuthTokens& Tokens, const FAsobiError& Error)
 	{
 		if (!bOk) return;
 		// Tokens.bCreated == true on the very first sign-in (brand-new guest),

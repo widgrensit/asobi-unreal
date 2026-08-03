@@ -1,5 +1,6 @@
 #include "AsobiAuth.h"
 #include "AsobiDevice.h"
+#include "AsobiCore/Auth.h"
 
 void UAsobiAuth::Init(UAsobiClient* InClient)
 {
@@ -16,10 +17,10 @@ void UAsobiAuth::Register(const FString& Username, const FString& Password, cons
 		Body->SetStringField(TEXT("display_name"), DisplayName);
 	}
 
-	Client->Post(TEXT("/api/v1/auth/register"), Body,
-		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+	Client->PostWithStatus(TEXT("/api/v1/auth/register"), Body,
+		FOnAsobiStatusResponse::CreateLambda([this, Callback](bool, int32 StatusCode, const FString& Response)
 		{
-			HandleAuthResponse(bSuccess, Response, Callback);
+			HandleAuthResponse(StatusCode, Response, Callback);
 		}));
 }
 
@@ -29,10 +30,10 @@ void UAsobiAuth::Login(const FString& Username, const FString& Password, const F
 	Body->SetStringField(TEXT("username"), Username);
 	Body->SetStringField(TEXT("password"), Password);
 
-	Client->Post(TEXT("/api/v1/auth/login"), Body,
-		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+	Client->PostWithStatus(TEXT("/api/v1/auth/login"), Body,
+		FOnAsobiStatusResponse::CreateLambda([this, Callback](bool, int32 StatusCode, const FString& Response)
 		{
-			HandleAuthResponse(bSuccess, Response, Callback);
+			HandleAuthResponse(StatusCode, Response, Callback);
 		}));
 }
 
@@ -41,10 +42,10 @@ void UAsobiAuth::Refresh(const FString& RefreshToken, const FOnAsobiAuthResponse
 	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
 	Body->SetStringField(TEXT("refresh_token"), RefreshToken);
 
-	Client->Post(TEXT("/api/v1/auth/refresh"), Body,
-		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+	Client->PostWithStatus(TEXT("/api/v1/auth/refresh"), Body,
+		FOnAsobiStatusResponse::CreateLambda([this, Callback](bool, int32 StatusCode, const FString& Response)
 		{
-			HandleAuthResponse(bSuccess, Response, Callback);
+			HandleAuthResponse(StatusCode, Response, Callback);
 		}));
 }
 
@@ -54,10 +55,10 @@ void UAsobiAuth::OAuthAuthenticate(const FString& Provider, const FString& Provi
 	Body->SetStringField(TEXT("provider"), Provider);
 	Body->SetStringField(TEXT("token"), ProviderToken);
 
-	Client->Post(TEXT("/api/v1/auth/oauth"), Body,
-		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+	Client->PostWithStatus(TEXT("/api/v1/auth/oauth"), Body,
+		FOnAsobiStatusResponse::CreateLambda([this, Callback](bool, int32 StatusCode, const FString& Response)
 		{
-			HandleAuthResponse(bSuccess, Response, Callback);
+			HandleAuthResponse(StatusCode, Response, Callback);
 		}));
 }
 
@@ -67,10 +68,10 @@ void UAsobiAuth::Guest(const FString& DeviceId, const FString& DeviceSecret, con
 	Body->SetStringField(TEXT("device_id"), DeviceId);
 	Body->SetStringField(TEXT("device_secret"), DeviceSecret);
 
-	Client->Post(TEXT("/api/v1/auth/guest"), Body,
-		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+	Client->PostWithStatus(TEXT("/api/v1/auth/guest"), Body,
+		FOnAsobiStatusResponse::CreateLambda([this, Callback](bool, int32 StatusCode, const FString& Response)
 		{
-			HandleAuthResponse(bSuccess, Response, Callback);
+			HandleAuthResponse(StatusCode, Response, Callback);
 		}));
 }
 
@@ -91,10 +92,10 @@ void UAsobiAuth::UpgradeGuest(const FString& Username, const FString& Password, 
 	Body->SetStringField(TEXT("username"), Username);
 	Body->SetStringField(TEXT("password"), Password);
 
-	Client->Post(TEXT("/api/v1/auth/guest/upgrade"), Body,
-		FOnAsobiResponse::CreateLambda([this, Callback](bool bSuccess, const FString& Response)
+	Client->PostWithStatus(TEXT("/api/v1/auth/guest/upgrade"), Body,
+		FOnAsobiStatusResponse::CreateLambda([this, Callback](bool, int32 StatusCode, const FString& Response)
 		{
-			HandleAuthResponse(bSuccess, Response, Callback);
+			HandleAuthResponse(StatusCode, Response, Callback);
 		}));
 }
 
@@ -152,32 +153,37 @@ void UAsobiAuth::VerifyGoogleIAP(const FString& PurchaseToken, const FString& Pr
 	Client->Post(TEXT("/api/v1/iap/google"), Body, Callback);
 }
 
-void UAsobiAuth::HandleAuthResponse(bool bSuccess, const FString& ResponseBody, const FOnAsobiAuthResponse& Callback)
+void UAsobiAuth::HandleAuthResponse(int32 StatusCode, const FString& ResponseBody, const FOnAsobiAuthResponse& Callback)
 {
+	const asobi::core::AuthResult Result =
+		asobi::core::ParseAuthResponse(StatusCode, TCHAR_TO_UTF8(*ResponseBody));
+
 	FAsobiAuthTokens Tokens;
+	FAsobiError Error;
 
-	if (bSuccess)
+	if (Result.Success)
 	{
-		TSharedPtr<FJsonObject> Json = UAsobiClient::ParseJson(ResponseBody);
-		if (Json.IsValid())
-		{
-			Json->TryGetStringField(TEXT("access_token"), Tokens.AccessToken);
-			Json->TryGetStringField(TEXT("refresh_token"), Tokens.RefreshToken);
-			Json->TryGetStringField(TEXT("player_id"), Tokens.PlayerId);
-			Json->TryGetStringField(TEXT("username"), Tokens.Username);
-			Json->TryGetBoolField(TEXT("created"), Tokens.bCreated);
-			Json->TryGetBoolField(TEXT("guest"), Tokens.bGuest);
-			Json->TryGetBoolField(TEXT("upgraded"), Tokens.bUpgraded);
+		Tokens.AccessToken = UTF8_TO_TCHAR(Result.Tokens.AccessToken.c_str());
+		Tokens.RefreshToken = UTF8_TO_TCHAR(Result.Tokens.RefreshToken.c_str());
+		Tokens.PlayerId = UTF8_TO_TCHAR(Result.Tokens.PlayerId.c_str());
+		Tokens.Username = UTF8_TO_TCHAR(Result.Tokens.Username.c_str());
+		Tokens.bCreated = Result.Tokens.Created;
+		Tokens.bGuest = Result.Tokens.Guest;
+		Tokens.bUpgraded = Result.Tokens.Upgraded;
 
-			// Auto-store tokens on the client
-			if (Client)
-			{
-				Client->SetAuthToken(Tokens.AccessToken);
-				Client->SetRefreshToken(Tokens.RefreshToken);
-				Client->SetPlayerId(Tokens.PlayerId);
-			}
+		// Auto-store tokens on the client
+		if (Client)
+		{
+			Client->SetAuthToken(Tokens.AccessToken);
+			Client->SetRefreshToken(Tokens.RefreshToken);
+			Client->SetPlayerId(Tokens.PlayerId);
 		}
 	}
+	else
+	{
+		Error.StatusCode = Result.Error.StatusCode;
+		Error.Reason = UTF8_TO_TCHAR(Result.Error.Reason.c_str());
+	}
 
-	Callback.ExecuteIfBound(bSuccess, Tokens);
+	Callback.ExecuteIfBound(Result.Success, Tokens, Error);
 }

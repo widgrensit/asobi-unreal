@@ -65,9 +65,9 @@ private:
 	};
 
 	UFUNCTION()
-	void HandleAuthResultA(bool bSuccess, const FAsobiAuthTokens& Tokens);
+	void HandleAuthResultA(bool bSuccess, const FAsobiAuthTokens& Tokens, const FAsobiError& Error);
 	UFUNCTION()
-	void HandleAuthResultB(bool bSuccess, const FAsobiAuthTokens& Tokens);
+	void HandleAuthResultB(bool bSuccess, const FAsobiAuthTokens& Tokens, const FAsobiError& Error);
 
 	UFUNCTION()
 	void HandleWsConnectedA();

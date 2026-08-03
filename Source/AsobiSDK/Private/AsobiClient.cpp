@@ -11,6 +11,15 @@ namespace
 {
 	const TCHAR* AsobiSessionSlot = TEXT("AsobiSession");
 	const int32 AsobiSessionUserIndex = 0;
+
+	FOnAsobiStatusResponse DropStatusCode(const FOnAsobiResponse& Callback)
+	{
+		return FOnAsobiStatusResponse::CreateLambda(
+			[Callback](bool bSuccess, int32, const FString& ResponseBody)
+			{
+				Callback.ExecuteIfBound(bSuccess, ResponseBody);
+			});
+	}
 }
 
 UAsobiClient::UAsobiClient()
@@ -104,30 +113,35 @@ void UAsobiClient::PersistRefreshToken()
 
 void UAsobiClient::Get(const FString& Path, const FOnAsobiResponse& Callback)
 {
-	SendRequest(TEXT("GET"), Path, TEXT(""), Callback);
+	SendRequest(TEXT("GET"), Path, TEXT(""), DropStatusCode(Callback));
 }
 
 void UAsobiClient::Post(const FString& Path, const TSharedPtr<FJsonObject>& Body, const FOnAsobiResponse& Callback)
 {
-	SendRequest(TEXT("POST"), Path, Body.IsValid() ? ToJsonString(Body) : TEXT("{}"), Callback);
+	SendRequest(TEXT("POST"), Path, Body.IsValid() ? ToJsonString(Body) : TEXT("{}"), DropStatusCode(Callback));
 }
 
 void UAsobiClient::Put(const FString& Path, const TSharedPtr<FJsonObject>& Body, const FOnAsobiResponse& Callback)
 {
-	SendRequest(TEXT("PUT"), Path, Body.IsValid() ? ToJsonString(Body) : TEXT("{}"), Callback);
+	SendRequest(TEXT("PUT"), Path, Body.IsValid() ? ToJsonString(Body) : TEXT("{}"), DropStatusCode(Callback));
 }
 
 void UAsobiClient::Delete(const FString& Path, const FOnAsobiResponse& Callback)
 {
-	SendRequest(TEXT("DELETE"), Path, TEXT(""), Callback);
+	SendRequest(TEXT("DELETE"), Path, TEXT(""), DropStatusCode(Callback));
 }
 
-void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback)
+void UAsobiClient::PostWithStatus(const FString& Path, const TSharedPtr<FJsonObject>& Body, const FOnAsobiStatusResponse& Callback)
+{
+	SendRequest(TEXT("POST"), Path, Body.IsValid() ? ToJsonString(Body) : TEXT("{}"), Callback);
+}
+
+void UAsobiClient::SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiStatusResponse& Callback)
 {
 	SendRequestWithRetry(Verb, Path, Body, Callback, true);
 }
 
-void UAsobiClient::SendRequestWithRetry(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback, bool bAllowRefresh)
+void UAsobiClient::SendRequestWithRetry(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiStatusResponse& Callback, bool bAllowRefresh)
 {
 	FHttpModule& HttpModule = FHttpModule::Get();
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule.CreateRequest();
@@ -153,7 +167,7 @@ void UAsobiClient::SendRequestWithRetry(const FString& Verb, const FString& Path
 		{
 			if (!bConnected || !Resp.IsValid())
 			{
-				Callback.ExecuteIfBound(false, TEXT(""));
+				Callback.ExecuteIfBound(false, 0, TEXT(""));
 				return;
 			}
 
@@ -171,25 +185,25 @@ void UAsobiClient::SendRequestWithRetry(const FString& Verb, const FString& Path
 			}
 
 			const bool bSuccess = Code >= 200 && Code < 300;
-			Callback.ExecuteIfBound(bSuccess, Content);
+			Callback.ExecuteIfBound(bSuccess, Code, Content);
 		});
 
 	Request->ProcessRequest();
 }
 
-void UAsobiClient::RefreshAndReplay(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& OriginalCallback)
+void UAsobiClient::RefreshAndReplay(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiStatusResponse& OriginalCallback)
 {
 	TSharedPtr<FJsonObject> RefreshBody = MakeShareable(new FJsonObject);
 	RefreshBody->SetStringField(TEXT("refresh_token"), RefreshToken);
 
 	TWeakObjectPtr<UAsobiClient> WeakThis(this);
 	SendRequestWithRetry(TEXT("POST"), TEXT("/api/v1/auth/refresh"), ToJsonString(RefreshBody),
-		FOnAsobiResponse::CreateLambda([WeakThis, Verb, Path, Body, OriginalCallback](bool bSuccess, const FString& Response)
+		FOnAsobiStatusResponse::CreateLambda([WeakThis, Verb, Path, Body, OriginalCallback](bool bSuccess, int32 StatusCode, const FString& Response)
 		{
 			UAsobiClient* Self = WeakThis.Get();
 			if (!Self)
 			{
-				OriginalCallback.ExecuteIfBound(false, TEXT(""));
+				OriginalCallback.ExecuteIfBound(false, 0, TEXT(""));
 				return;
 			}
 
@@ -208,7 +222,7 @@ void UAsobiClient::RefreshAndReplay(const FString& Verb, const FString& Path, co
 			if (!bSuccess || NewAccess.IsEmpty())
 			{
 				Self->OnAuthExpired.Broadcast();
-				OriginalCallback.ExecuteIfBound(false, Response);
+				OriginalCallback.ExecuteIfBound(false, StatusCode, Response);
 				return;
 			}
 

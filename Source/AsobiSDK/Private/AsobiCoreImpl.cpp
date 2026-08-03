@@ -5,4 +5,6 @@
 //
 // See Source/AsobiCore/CMakeLists.txt and AsobiSDK.Build.cs for context.
 
+#include "../../AsobiCore/Private/Auth.cpp"
+#include "../../AsobiCore/Private/Json.cpp"
 #include "../../AsobiCore/Private/Protocol.cpp"

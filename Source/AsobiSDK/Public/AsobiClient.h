@@ -7,6 +7,11 @@
 
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnAsobiResponse, bool, bSuccess, const FString&, ResponseBody);
 
+// Native (C++-only) response delegate that also carries the HTTP status
+// code. Auth needs it to build FAsobiError; StatusCode is 0 when the
+// request never got a response.
+DECLARE_DELEGATE_ThreeParams(FOnAsobiStatusResponse, bool /*bSuccess*/, int32 /*StatusCode*/, const FString& /*ResponseBody*/);
+
 // Fires after a 401 auto-refresh rotates the access token. Wire this to
 // UAsobiWebSocket::Reauthenticate so the socket re-sends session.connect
 // with the fresh access token.
@@ -66,6 +71,9 @@ public:
 	void Put(const FString& Path, const TSharedPtr<FJsonObject>& Body, const FOnAsobiResponse& Callback);
 	void Delete(const FString& Path, const FOnAsobiResponse& Callback);
 
+	// As Post(), but reports the HTTP status code alongside the body.
+	void PostWithStatus(const FString& Path, const TSharedPtr<FJsonObject>& Body, const FOnAsobiStatusResponse& Callback);
+
 	// Parse helpers
 	static TSharedPtr<FJsonObject> ParseJson(const FString& JsonString);
 	static FString ToJsonString(const TSharedPtr<FJsonObject>& JsonObject);
@@ -95,9 +103,9 @@ public:
 	static FAsobiGameMessage ParseGameMessage(const TSharedPtr<FJsonObject>& Json);
 
 private:
-	void SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback);
-	void SendRequestWithRetry(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& Callback, bool bAllowRefresh);
-	void RefreshAndReplay(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiResponse& OriginalCallback);
+	void SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiStatusResponse& Callback);
+	void SendRequestWithRetry(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiStatusResponse& Callback, bool bAllowRefresh);
+	void RefreshAndReplay(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiStatusResponse& OriginalCallback);
 	void PersistRefreshToken();
 
 	FString BaseUrl;

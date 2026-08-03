@@ -80,17 +80,25 @@ void UAsobiSmokeTest::SetupPlayer(FPlayer& P, const FString& InBaseUrl, bool bIs
 	}
 }
 
-void UAsobiSmokeTest::HandleAuthResultA(bool bSuccess, const FAsobiAuthTokens& Tokens)
+void UAsobiSmokeTest::HandleAuthResultA(bool bSuccess, const FAsobiAuthTokens& Tokens, const FAsobiError& Error)
 {
-	if (!bSuccess) { Finish(false, TEXT("register failed for A")); return; }
+	if (!bSuccess)
+	{
+		Finish(false, FString::Printf(TEXT("register failed for A: %d %s"), Error.StatusCode, *Error.Reason));
+		return;
+	}
 	A.PlayerId = Tokens.PlayerId;
 	UE_LOG(LogTemp, Log, TEXT("[smoke] Registered A: %s"), *A.PlayerId);
 	A.WebSocket->Connect(WsUrl);
 }
 
-void UAsobiSmokeTest::HandleAuthResultB(bool bSuccess, const FAsobiAuthTokens& Tokens)
+void UAsobiSmokeTest::HandleAuthResultB(bool bSuccess, const FAsobiAuthTokens& Tokens, const FAsobiError& Error)
 {
-	if (!bSuccess) { Finish(false, TEXT("register failed for B")); return; }
+	if (!bSuccess)
+	{
+		Finish(false, FString::Printf(TEXT("register failed for B: %d %s"), Error.StatusCode, *Error.Reason));
+		return;
+	}
 	B.PlayerId = Tokens.PlayerId;
 	UE_LOG(LogTemp, Log, TEXT("[smoke] Registered B: %s"), *B.PlayerId);
 	B.WebSocket->Connect(WsUrl);

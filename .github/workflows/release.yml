@@ -89,4 +89,9 @@ jobs:
           fi
           git tag "$TAG"
           git push origin "$TAG"
-          gh release create "$TAG" --title "$TAG" --notes "$CHANGELOG"
+          {
+            printf '%s\n\n' "$CHANGELOG"
+            printf '%s\n' "---"
+            printf '%s\n' "CI gates the protocol dispatch corpus and the sdk_demo_backend wire contract. It does **not** run the \`Asobi.Smoke\` UE Automation spec (no Unreal Engine on hosted runners). Run it manually and record the result here: [docs/RELEASE_CHECKLIST.md](https://github.com/${{ github.repository }}/blob/main/docs/RELEASE_CHECKLIST.md)."
+          } > /tmp/release-notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file /tmp/release-notes.md

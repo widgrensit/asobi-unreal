@@ -103,7 +103,7 @@ Instead, CI exercises:
 - **Smoke source syntax** — `clang-format` parse check + `clang -fsyntax-only` against a UE-stub header so the smoke file at least parses as C++.
 - **Backend wire-protocol contract** — boots `widgrensit/sdk_demo_backend` via Docker and hits `POST /api/v1/auth/register` plus opens a `/ws` handshake. This proves the contract the plugin is coded against still works, end-to-end against the real server.
 
-A self-hosted runner with UE pre-installed would close the remaining gap (`Asobi.Smoke` end-to-end); until then the Automation smoke test is run manually before each release.
+A self-hosted runner with UE pre-installed would close the remaining gap (`Asobi.Smoke` end-to-end). The deliberate call is to *not* stand one up yet and to run the Automation spec manually around each release instead; the rationale and the conditions that would reverse it are recorded in [`docs/RELEASE_CHECKLIST.md`](../../../docs/RELEASE_CHECKLIST.md).
 
 ## Troubleshooting
 

@@ -139,7 +139,7 @@ See [asobi-unreal-demo](https://github.com/widgrensit/asobi-unreal-demo) for a w
 
 ## Smoke test
 
-Every release of this plugin runs the canonical SDK smoke flow against `widgrensit/sdk_demo_backend`. See [`Source/AsobiSDK/Tests/SmokeTest.md`](Source/AsobiSDK/Tests/SmokeTest.md) for the manual run command and CI notes.
+Every release of this plugin runs the canonical SDK smoke flow against `widgrensit/sdk_demo_backend`. See [`Source/AsobiSDK/Tests/SmokeTest.md`](Source/AsobiSDK/Tests/SmokeTest.md) for the manual run command and CI notes, and [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) for what CI does and does not cover per release.
 
 ## License
 

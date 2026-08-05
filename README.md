@@ -130,6 +130,44 @@ const FAsobiDeviceCredentials Creds = AsobiDevice::LoadOrCreate(Options);
 Auth->Guest(Creds.DeviceId, Creds.DeviceSecret, OnGuest);
 ```
 
+## Extensions (RPC)
+
+Server extensions expose methods over the same socket.
+
+**Blueprint** — drag off the `Asobi RPC` node:
+
+```
+Asobi RPC (Realtime, "quests.claim", "{\"quest_key\":\"daily\"}")
+  -> Success  ResultJson
+  -> Failure  Error.Code / Error.Message / Error.DetailsJson
+```
+
+**C++**:
+
+```cpp
+TSharedPtr<FJsonObject> Params = MakeShareable(new FJsonObject);
+Params->SetStringField(TEXT("quest_key"), TEXT("daily"));
+
+Realtime->Rpc(TEXT("quests.claim"), Params,
+    [](const FString& ResultJson, const FAsobiRpcError* Error)
+    {
+        if (Error)
+        {
+            if (Error->Code == TEXT("quests.already_claimed")) { /* ... */ }
+            return;
+        }
+        // ResultJson is the result object - parse it as the extension documents
+    });
+```
+
+`ResultJson` is raw JSON because the extension defines its shape. Calls are
+correlated by cid, so several can be in flight at once and may answer out of
+order.
+
+Exactly one outcome fires, always: a call made while disconnected fails with
+code `not_connected` rather than leaving a latent node waiting forever. Branch
+on `Code`; `Message` is for humans and may be reworded at any time.
+
 ## Features
 
 | Subsystem | REST | WebSocket |
@@ -145,6 +183,7 @@ Auth->Guest(Creds.DeviceId, Creds.DeviceSecret, OnGuest);
 | Cloud saves & storage | ✓ | — |
 | Presence & notifications | ✓ | ✓ |
 | Voting (cast, veto) | ✓ | ✓ |
+| Extensions (RPC) | — | ✓ |
 
 Blueprint-callable on every subsystem. Typed `USTRUCT` responses for player, world, match, DM, leaderboard, etc.
 

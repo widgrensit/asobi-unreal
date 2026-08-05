@@ -321,4 +321,80 @@ std::optional<bool> TopLevelBool(std::string_view Json, std::string_view Key)
     return std::nullopt;
 }
 
+std::optional<std::string> RawPath(std::string_view Json, const std::vector<std::string>& Path)
+{
+    std::string_view Span = Json;
+    // Owns whatever each step descended into, since Span points into it.
+    std::string Held;
+
+    for (const std::string& Key : Path)
+    {
+        std::size_t I = SkipWs(Span, 0);
+        if (I >= Span.size() || Span[I] != '{')
+        {
+            return std::nullopt;
+        }
+        ++I;
+
+        bool bFound = false;
+        while (I < Span.size())
+        {
+            I = SkipWs(Span, I);
+            if (I < Span.size() && Span[I] == '}')
+            {
+                break;
+            }
+            const std::optional<std::string> K = ReadString(Span, I);
+            if (!K)
+            {
+                return std::nullopt;
+            }
+            I = SkipWs(Span, I);
+            if (I >= Span.size() || Span[I] != ':')
+            {
+                return std::nullopt;
+            }
+            ++I;
+            I = SkipWs(Span, I);
+
+            const std::size_t ValueStart = I;
+            if (!SkipValue(Span, I))
+            {
+                return std::nullopt;
+            }
+            if (*K == Key)
+            {
+                Held = std::string(Span.substr(ValueStart, I - ValueStart));
+                Span = Held;
+                bFound = true;
+                break;
+            }
+
+            I = SkipWs(Span, I);
+            if (I < Span.size() && Span[I] == ',')
+            {
+                ++I;
+                continue;
+            }
+            break;
+        }
+
+        if (!bFound)
+        {
+            return std::nullopt;
+        }
+    }
+    return std::string(Span);
+}
+
+std::optional<std::string> Unquote(std::string_view Raw)
+{
+    if (Raw.size() < 2 || Raw.front() != '"')
+    {
+        return std::nullopt;
+    }
+    std::size_t I = 0;
+    return ReadString(Raw, I);
+}
+
 } // namespace asobi::core::json

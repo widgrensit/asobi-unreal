@@ -254,14 +254,26 @@ void UAsobiWebSocket::DmSend(const FString& RecipientId, const FString& Content)
 
 void UAsobiWebSocket::Send(const FString& Type, const TSharedPtr<FJsonObject>& Payload)
 {
+	SendWithCid(Type, Payload);
+}
+
+FString UAsobiWebSocket::SendWithCid(const FString& Type, const TSharedPtr<FJsonObject>& Payload)
+{
 	if (!WebSocket.IsValid() || !WebSocket->IsConnected())
 	{
-		return;
+		return FString();
 	}
+
+	// A string, matching the documented protocol and every other SDK. This was
+	// a number, which nothing read - correlation did not exist here until RPC.
+	// Numbers also round-trip badly for correlation: SetNumberField takes a
+	// double, so a cid can come back formatted differently from how it went
+	// out and stop matching the call that is waiting on it.
+	const FString Cid = FString::Printf(TEXT("c-%d"), NextCid++);
 
 	TSharedPtr<FJsonObject> Msg = MakeShareable(new FJsonObject);
 	Msg->SetStringField(TEXT("type"), Type);
-	Msg->SetNumberField(TEXT("cid"), NextCid++);
+	Msg->SetStringField(TEXT("cid"), Cid);
 
 	if (Payload.IsValid())
 	{
@@ -273,6 +285,94 @@ void UAsobiWebSocket::Send(const FString& Type, const TSharedPtr<FJsonObject>& P
 	}
 
 	WebSocket->Send(SerializeJson(Msg));
+
+	// The raw token as it will come back, so the reply matches without
+	// re-quoting at every comparison.
+	return FString::Printf(TEXT("\"%s\""), *Cid);
+}
+
+void UAsobiWebSocket::Rpc(const FString& Method, const TSharedPtr<FJsonObject>& Params,
+                          FAsobiRpcCallback Callback)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	// protocol versions the payload rather than the frame type, so a future
+	// version is a rejection a client can read.
+	Payload->SetNumberField(TEXT("protocol"), 1);
+	Payload->SetStringField(TEXT("method"), Method);
+	Payload->SetObjectField(TEXT("params"),
+		Params.IsValid() ? Params : MakeShareable(new FJsonObject));
+
+	const FString Cid = SendWithCid(TEXT("rpc.call"), Payload);
+	if (Cid.IsEmpty())
+	{
+		// Not connected. Answer anyway rather than leave the caller waiting on
+		// a reply that was never sent - a latent Blueprint node that never
+		// completes is a hang with no error to show.
+		if (Callback)
+		{
+			FAsobiRpcError Error;
+			Error.Code = TEXT("not_connected");
+			Error.Message = TEXT("The realtime socket is not connected.");
+			Error.DetailsJson = TEXT("{}");
+			Callback(FString(), &Error);
+		}
+		return;
+	}
+
+	if (Callback)
+	{
+		PendingRpc.Add(Cid, MoveTemp(Callback));
+	}
+}
+
+bool UAsobiWebSocket::RouteRpcReply(const FString& Type, const FString& MessageString)
+{
+	if (Type != TEXT("rpc.ok") && Type != TEXT("rpc.error"))
+	{
+		return false;
+	}
+
+	const FTCHARToUTF8 RawUtf8(*MessageString);
+	const std::string_view RawView(RawUtf8.Get(), RawUtf8.Length());
+
+	const std::optional<std::string> Cid = asobi::core::ParseEnvelopeCid(RawView);
+	if (!Cid.has_value())
+	{
+		return true;
+	}
+
+	FAsobiRpcCallback Callback;
+	if (!PendingRpc.RemoveAndCopyValue(UTF8_TO_TCHAR(Cid->c_str()), Callback) || !Callback)
+	{
+		// A reply to a call nobody is waiting on - a duplicate, or one already
+		// answered. Swallow it rather than firing a callback twice.
+		return true;
+	}
+
+	const std::optional<asobi::core::RpcReply> Reply = asobi::core::ParseRpcReply(RawView);
+	if (!Reply.has_value())
+	{
+		FAsobiRpcError Error;
+		Error.Code = TEXT("internal");
+		Error.Message = TEXT("The server sent a malformed RPC reply.");
+		Error.DetailsJson = TEXT("{}");
+		Callback(FString(), &Error);
+		return true;
+	}
+
+	if (Reply->bIsError)
+	{
+		FAsobiRpcError Error;
+		Error.Code = UTF8_TO_TCHAR(Reply->Error.Code.c_str());
+		Error.Message = UTF8_TO_TCHAR(Reply->Error.Message.c_str());
+		Error.DetailsJson = UTF8_TO_TCHAR(Reply->Error.DetailsJson.c_str());
+		Callback(FString(), &Error);
+	}
+	else
+	{
+		Callback(UTF8_TO_TCHAR(Reply->ResultJson.c_str()), nullptr);
+	}
+	return true;
 }
 
 void UAsobiWebSocket::HandleMessage(const FString& MessageString)
@@ -298,6 +398,13 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 
 	// Broadcast raw message
 	OnMessage.Broadcast(Type, PayloadStr);
+
+	// RPC replies go to the one caller waiting on them, not to every listener,
+	// so they are routed before the by-type dispatch below and never reach it.
+	if (RouteRpcReply(Type, MessageString))
+	{
+		return;
+	}
 
 	// Resolve the wire-`type` to an engine-agnostic EventId via AsobiCore.
 	// Unknown types fall through silently (preserves prior behavior — the

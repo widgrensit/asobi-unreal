@@ -105,4 +105,43 @@ std::optional<std::string> ParseEnvelopeType(std::string_view Json)
     return json::TopLevelString(Json, "type");
 }
 
+std::optional<std::string> ParseEnvelopeCid(std::string_view Json)
+{
+    return json::RawPath(Json, {"cid"});
+}
+
+std::optional<RpcReply> ParseRpcReply(std::string_view Json)
+{
+    auto Type = ParseEnvelopeType(Json);
+    if (!Type)
+    {
+        return std::nullopt;
+    }
+
+    RpcReply Reply;
+    if (*Type == "rpc.error")
+    {
+        Reply.bIsError = true;
+        auto Code = json::RawPath(Json, {"payload", "error", "code"});
+        auto Message = json::RawPath(Json, {"payload", "error", "message"});
+        auto Details = json::RawPath(Json, {"payload", "error", "details"});
+
+        Reply.Error.Code = Code ? json::Unquote(*Code).value_or("internal") : "internal";
+        if (Reply.Error.Code.empty())
+        {
+            Reply.Error.Code = "internal";
+        }
+        // Falls back to the code rather than to nothing, so an error is never
+        // reported to a player with an empty message.
+        Reply.Error.Message =
+            Message ? json::Unquote(*Message).value_or(Reply.Error.Code) : Reply.Error.Code;
+        Reply.Error.DetailsJson = Details.value_or("{}");
+        return Reply;
+    }
+
+    Reply.bIsError = false;
+    Reply.ResultJson = json::RawPath(Json, {"payload", "result"}).value_or("{}");
+    return Reply;
+}
+
 } // namespace asobi::core

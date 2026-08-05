@@ -135,37 +135,14 @@ jobs:
           echo "Note: full UBT compile is out of scope for hosted CI."
           echo "clang-format parse check above is the primary syntax gate."
 
-      - name: dispatch fixtures match the canonical 35-event corpus
-        # The Asobi.Dispatch automation test enumerates one sub-test per
-        # canonical server event (35). Vendored fixtures live under
-        # Source/AsobiSDK/Tests/Fixtures/. Drift here (a fixture added
-        # upstream but not vendored, or vice versa) silently breaks the
-        # dispatch test's assumptions, so we check the corpus on every PR.
-        run: |
-          set -euo pipefail
-          expected="chat.joined chat.left chat.message dm.message dm.sent error \
-            game.error game.message match.finished match.joined match.left match.list match.matched \
-            match.matchmaker_expired match.matchmaker_failed match.state \
-            match.vote_result match.vote_start match.vote_tally match.vote_vetoed \
-            matchmaker.queued matchmaker.removed notification.new presence.updated \
-            session.connected session.heartbeat vote.cast_ok vote.veto_ok \
-            world.finished world.joined world.left world.list world.phase_changed \
-            world.terrain world.tick"
-          fixture_dir="Source/AsobiSDK/Tests/Fixtures"
-          if [ ! -d "$fixture_dir" ]; then
-            echo "fixture dir missing: $fixture_dir"
-            exit 1
-          fi
-          actual=$(cd "$fixture_dir" && ls *.json 2>/dev/null | sed 's/\.json$//' | sort | tr '\n' ' ' | sed 's/ $//')
-          want=$(echo "$expected" | tr -s ' \t\n' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//')
-          if [ "$actual" != "$want" ]; then
-            echo "fixture corpus drift detected"
-            echo "want: $want"
-            echo "have: $actual"
-            diff <(echo "$want" | tr ' ' '\n') <(echo "$actual" | tr ' ' '\n') || true
-            exit 1
-          fi
-          echo "fixture corpus matches: 35 events"
+      # The corpus/EventId agreement check used to live here as a hardcoded
+      # list of 35 event names. It was a second source of truth for something
+      # AsobiCore's dispatch test already proves from the table itself -
+      # every fixture has an EventId (bar the cid-correlated replies), every
+      # EventId has a fixture, and the counts match - so the only thing the
+      # copy added was a list to hand-maintain, which went stale the first
+      # time the corpus grew. Deleted rather than updated: see
+      # Source/AsobiCore/Tests/DispatchTest.cpp.
 
   backend-contract:
     name: sdk_demo_backend wire-protocol contract

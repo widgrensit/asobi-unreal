@@ -99,4 +99,47 @@ const std::array<EventId, kEventCount>& AllKnownEvents();
 // fixtures without pulling in nlohmann::json.
 std::optional<std::string> ParseEnvelopeType(std::string_view Json);
 
+// Extracts the `cid` field from a JSON envelope as its RAW token - `"c-1"`
+// including quotes, or `42` for a number. Raw rather than decoded because
+// correlation only ever compares it to the token this SDK sent, so it never
+// needs interpreting, and keeping it raw means a server that echoes a string
+// and one that echoes a number both correlate without a type negotiation.
+//
+// Returns nullopt if the JSON is malformed or has no top-level `cid` - which
+// is the normal case for a server push, as opposed to a reply.
+std::optional<std::string> ParseEnvelopeCid(std::string_view Json);
+
+// The shared error object an extension returns when it rejects a call.
+struct RpcError
+{
+    // The one part a caller can branch on. Never empty: an absent code reads
+    // as "internal", or a server defect and a domain outcome look identical.
+    std::string Code;
+
+    // For humans. May be reworded at any time - do not branch on it.
+    std::string Message;
+
+    // Raw JSON, because details are defined by the extension, not by us.
+    std::string DetailsJson;
+};
+
+// The decoded form of an rpc.ok / rpc.error frame.
+struct RpcReply
+{
+    bool bIsError = false;
+
+    // rpc.ok only. The `result` object as raw JSON - the caller parses it into
+    // whatever shape the extension documents. Never empty: an absent result
+    // reads as "{}".
+    std::string ResultJson;
+
+    // rpc.error only.
+    RpcError Error;
+};
+
+// Decodes an rpc.ok / rpc.error frame. Returns nullopt if the JSON is
+// malformed. Anything that is not rpc.error is treated as a success, so the
+// caller decides which frame types reach this at all.
+std::optional<RpcReply> ParseRpcReply(std::string_view Json);
+
 } // namespace asobi::core

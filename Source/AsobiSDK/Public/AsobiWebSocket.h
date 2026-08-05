@@ -7,6 +7,32 @@
 
 class UAsobiClient;
 
+/**
+ * The shared error object an extension returns when it rejects an RPC call.
+ */
+USTRUCT(BlueprintType)
+struct ASOBISDK_API FAsobiRpcError
+{
+	GENERATED_BODY()
+
+	/** The one part to branch on. Never empty - an absent code reads "internal". */
+	UPROPERTY(BlueprintReadOnly, Category = "Asobi|RPC")
+	FString Code;
+
+	/** For humans. May be reworded at any time - do not branch on it. */
+	UPROPERTY(BlueprintReadOnly, Category = "Asobi|RPC")
+	FString Message;
+
+	/** Raw JSON. Details are defined by the extension, not by this SDK. */
+	UPROPERTY(BlueprintReadOnly, Category = "Asobi|RPC")
+	FString DetailsJson;
+};
+
+/**
+ * Completion for a single RPC call. Error is null on success.
+ */
+using FAsobiRpcCallback = TFunction<void(const FString& ResultJson, const FAsobiRpcError* Error)>;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiWsConnected);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWsDisconnected, const FString&, Reason);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWsMessage, const FString&, Type, const FString&, Payload);
@@ -259,12 +285,39 @@ public:
 	void HandleMessageForTest(const FString& MessageString) { HandleMessage(MessageString); }
 #endif
 
+	/**
+	 * Call a server extension's RPC method.
+	 *
+	 * Correlated by cid, so several calls may be in flight at once and may
+	 * answer out of order. Callback fires exactly once: with ResultJson and a
+	 * null Error on success, or with an Error to branch on via its Code.
+	 *
+	 * Params may be null, which sends an empty object. Blueprint users want
+	 * the "Asobi RPC" latent node instead - see UAsobiRpcAction.
+	 */
+	void Rpc(const FString& Method, const TSharedPtr<FJsonObject>& Params, FAsobiRpcCallback Callback);
+
 private:
 	void Send(const FString& Type, const TSharedPtr<FJsonObject>& Payload);
+
+	/** Send and return the cid written, so a caller can await the reply. */
+	FString SendWithCid(const FString& Type, const TSharedPtr<FJsonObject>& Payload);
+
+	/** Returns true if the frame was an RPC reply and was routed to its caller. */
+	bool RouteRpcReply(const FString& Type, const FString& MessageString);
+
 	void HandleMessage(const FString& MessageString);
 	FString SerializeJson(const TSharedPtr<FJsonObject>& Obj);
 
 	TSharedPtr<IWebSocket> WebSocket;
 	int32 NextCid = 1;
 	FString LastAuthToken;
+
+	/**
+	 * In-flight RPC calls, keyed by the RAW cid token as it appears on the
+	 * wire (quotes included). Raw because correlation only ever compares it to
+	 * what we sent, so it never needs interpreting - and comparing tokens
+	 * sidesteps a server that echoes 42 as 42.0.
+	 */
+	TMap<FString, FAsobiRpcCallback> PendingRpc;
 };

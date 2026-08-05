@@ -35,6 +35,7 @@ enable_testing()
 
 add_executable(asobi_core_dispatch_test
     Tests/DispatchTest.cpp
+    Tests/RpcTest.cpp
 )
 target_link_libraries(asobi_core_dispatch_test PRIVATE AsobiCore)
 target_include_directories(asobi_core_dispatch_test PRIVATE Vendor)

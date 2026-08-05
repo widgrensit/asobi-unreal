@@ -50,6 +50,8 @@ enum class EventId
     MatchVoteStart,
     MatchVoteTally,
     MatchVoteVetoed,
+    ModuleError,
+    ModuleMessage,
     MatchmakerQueued,
     MatchmakerRemoved,
     NotificationNew,
@@ -69,7 +71,7 @@ enum class EventId
 
 // Canonical event count — keep in sync with EventId enum and the fixture
 // corpus. Compile-time constant so tests can assert without runtime work.
-constexpr std::size_t kEventCount = 35;
+constexpr std::size_t kEventCount = 37;
 
 // Maps a wire-`type` string ("match.matched", "world.tick", ...) to its
 // EventId. Returns nullopt if the type is unknown.

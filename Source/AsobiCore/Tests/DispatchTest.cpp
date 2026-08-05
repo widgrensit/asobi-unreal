@@ -80,6 +80,15 @@ std::vector<fs::path> ListFixtures()
     return Out;
 }
 
+// Frames answered on the cid of the request that asked for them, rather than
+// broadcast as events. They are in the corpus because they are part of the
+// wire protocol, but they have no EventId by design - the reply goes to one
+// caller, not to every listener. Covered in RpcTest.cpp.
+bool IsCorrelatedReply(const std::string& WireType)
+{
+    return WireType == "rpc.ok" || WireType == "rpc.error";
+}
+
 } // namespace
 
 TEST_CASE("ParseEventId round-trips every known id")
@@ -141,6 +150,10 @@ TEST_CASE("every fixture dispatches to a known EventId")
     for (const auto& Path : Fixtures)
     {
         const std::string Stem = Path.stem().string();
+        if (IsCorrelatedReply(Stem))
+        {
+            continue;
+        }
         const std::string Raw = ReadFile(Path);
         REQUIRE_MESSAGE(!Raw.empty(), "fixture empty: " << Path.string());
 
@@ -182,7 +195,15 @@ TEST_CASE("every EventId has a vendored fixture")
 TEST_CASE("fixture corpus matches kEventCount exactly")
 {
     const auto Fixtures = ListFixtures();
-    CHECK_MESSAGE(Fixtures.size() == kEventCount,
-        "expected " << kEventCount << " fixtures, found " << Fixtures.size()
+    std::size_t EventFixtures = 0;
+    for (const auto& Path : Fixtures)
+    {
+        if (!IsCorrelatedReply(Path.stem().string()))
+        {
+            ++EventFixtures;
+        }
+    }
+    CHECK_MESSAGE(EventFixtures == kEventCount,
+        "expected " << kEventCount << " event fixtures, found " << EventFixtures
         << " — drift between corpus and EventId table");
 }

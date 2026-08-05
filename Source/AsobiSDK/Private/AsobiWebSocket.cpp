@@ -442,6 +442,10 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		break;
 	}
 
+	// module.* are the server's current names for the same two events. Every
+	// other SDK routes both pairs to the same delegate; without these a game
+	// silently drops dev-console output from a server on the newer naming.
+	case EventId::ModuleError:
 	case EventId::GameError:
 	{
 		FAsobiGameError Error;
@@ -453,6 +457,7 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		break;
 	}
 
+	case EventId::ModuleMessage:
 	case EventId::GameMessage:
 	{
 		FAsobiGameMessage Message;

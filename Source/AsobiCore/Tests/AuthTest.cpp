@@ -92,39 +92,65 @@ TEST_CASE("2xx with an empty access token is a failure")
     CHECK(R.Error.Reason == kAuthErrorMalformedResponse);
 }
 
-TEST_CASE("backend guest error codes survive to the caller")
+TEST_CASE("backend error codes survive to the caller")
 {
     struct Case
     {
         int StatusCode;
         const char* Body;
+        const char* Code;
         const char* Reason;
     };
 
-    // Mirrors asobi_guest_controller / asobi_auth_controller.
+    // The shared error object, which is what every current asobi answers with.
+    // These fixtures used to carry the pre-object flat names
+    // ("guest_capacity_reached", "not_an_unclaimed_guest") that the server
+    // stopped sending, so the suite was green against a contract nobody spoke.
     const Case Cases[] = {
-        {400, R"({"error":"weak_device_secret"})",      "weak_device_secret"},
-        {400, R"({"error":"invalid_device_id"})",       "invalid_device_id"},
-        {400, R"({"error":"missing_required_fields"})", "missing_required_fields"},
-        {401, R"({"error":"guest_revoked"})",           "guest_revoked"},
-        {401, R"({"error":"invalid_device_secret"})",   "invalid_device_secret"},
-        {401, R"({"error":"invalid_credentials"})",     "invalid_credentials"},
-        {403, R"({"error":"guest_auth_disabled"})",     "guest_auth_disabled"},
-        {409, R"({"error":"device_already_registered"})", "device_already_registered"},
-        {409, R"({"error":"username_taken"})",          "username_taken"},
-        {409, R"({"error":"not_an_unclaimed_guest"})",  "not_an_unclaimed_guest"},
-        {503, R"({"error":"guest_capacity_reached"})",  "guest_capacity_reached"},
+        {400, R"({"error":{"code":"guest.weak_device_secret","message":"Too short.","details":{}}})",
+         "guest.weak_device_secret", "Too short."},
+        {401, R"({"error":{"code":"guest.invalid_device_secret","message":"No match.","details":{}}})",
+         "guest.invalid_device_secret", "No match."},
+        {403, R"({"error":{"code":"guest.disabled","message":"Off.","details":{}}})",
+         "guest.disabled", "Off."},
+        {403, R"({"error":{"code":"player.confirmation_failed","message":"Wrong.","details":{}}})",
+         "player.confirmation_failed", "Wrong."},
+        {409, R"({"error":{"code":"guest.not_unclaimed","message":"Claimed.","details":{}}})",
+         "guest.not_unclaimed", "Claimed."},
+        {429, R"({"error":{"code":"guest.rate_limited","message":"Slow down.","details":{"retry_after":5}}})",
+         "guest.rate_limited", "Slow down."},
+        {503, R"({"error":{"code":"guest.capacity_reached","message":"Full.","details":{}}})",
+         "guest.capacity_reached", "Full."},
+        {503, R"({"error":{"code":"guest.unavailable","message":"Cannot count.","details":{}}})",
+         "guest.unavailable", "Cannot count."},
     };
 
     for (const Case& C : Cases)
     {
-        CAPTURE(C.Reason);
+        CAPTURE(C.Code);
         const AuthResult R = ParseAuthResponse(C.StatusCode, C.Body);
         CHECK_FALSE(R.Success);
         CHECK(R.Error.StatusCode == C.StatusCode);
+        CHECK(R.Error.Code == C.Code);
         CHECK(R.Error.Reason == C.Reason);
-        CHECK(R.Tokens.AccessToken.empty());
     }
+}
+
+TEST_CASE("a flat legacy error body still reaches the caller")
+{
+    // Some routes kept a flat body, and an older deployment may send one, so
+    // dropping this path would break against a server that is merely behind.
+    const AuthResult R = ParseAuthResponse(403, R"({"error":"guest_auth_disabled"})");
+    CHECK_FALSE(R.Success);
+    CHECK(R.Error.Reason == "guest_auth_disabled");
+    CHECK(R.Error.Code.empty());
+}
+
+TEST_CASE("an error object with no message still yields its code")
+{
+    const AuthResult R = ParseAuthResponse(500, R"({"error":{"code":"internal","details":{}}})");
+    CHECK(R.Error.Code == "internal");
+    CHECK(R.Error.Reason == kAuthErrorUnknown);
 }
 
 TEST_CASE("validation_failed keeps its reason past the nested fields object")

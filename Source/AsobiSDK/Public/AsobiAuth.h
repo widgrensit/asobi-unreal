@@ -76,6 +76,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
 	void UnlinkProvider(const FString& Provider, const FOnAsobiResponse& Callback);
 
+	/**
+	 * Erases the signed-in account and everything the server holds for it -
+	 * saves, storage, inventory, wallets, leaderboard entries, identities.
+	 * Irreversible, and the in-app account deletion the app stores require.
+	 *
+	 * Password is required only for an account that has one. A guest or a
+	 * provider-only account has no credential the client can re-present, so its
+	 * session is the whole confirmation: pass an empty string.
+	 *
+	 * Clears the local session on success only, deliberately unlike Logout
+	 * which clears regardless: a refused confirmation (403
+	 * player.confirmation_failed) or a credential change mid-flight (409)
+	 * leaves a live account whose session must survive.
+	 *
+	 * Needs a server carrying POST /api/v1/players/me/erase; older ones 404.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")
+	void EraseAccount(const FString& Password, const FOnAsobiResponse& Callback);
+
 	// POST /api/v1/iap/apple (authenticated). Pass the StoreKit 2 JWS
 	// signed transaction (the backend expects `signed_transaction`).
 	UFUNCTION(BlueprintCallable, Category = "Asobi|Auth")

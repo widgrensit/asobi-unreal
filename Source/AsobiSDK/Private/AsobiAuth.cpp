@@ -136,6 +136,40 @@ void UAsobiAuth::UnlinkProvider(const FString& Provider, const FOnAsobiResponse&
 	Client->Delete(FString::Printf(TEXT("/api/v1/auth/unlink?provider=%s"), *Provider), Callback);
 }
 
+void UAsobiAuth::EraseAccount(const FString& Password, const FOnAsobiResponse& Callback)
+{
+	if (!Client)
+	{
+		Callback.ExecuteIfBound(false, TEXT(""));
+		return;
+	}
+
+	// An empty password means "this account has none", so the field is left off
+	// entirely rather than sent empty - an empty string would read as a
+	// confirmation attempt that failed.
+	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);
+	if (!Password.IsEmpty())
+	{
+		Body->SetStringField(TEXT("password"), Password);
+	}
+
+	TWeakObjectPtr<UAsobiClient> WeakClient(Client);
+	Client->Post(TEXT("/api/v1/players/me/erase"), Body,
+		FOnAsobiResponse::CreateLambda([WeakClient, Callback](bool bSuccess, const FString& Response)
+		{
+			// Only on success: a refusal leaves a live account, and signing the
+			// player out of one they still have would be wrong.
+			if (bSuccess)
+			{
+				if (UAsobiClient* C = WeakClient.Get())
+				{
+					C->ClearTokens();
+				}
+			}
+			Callback.ExecuteIfBound(bSuccess, Response);
+		}));
+}
+
 void UAsobiAuth::VerifyAppleIAP(const FString& SignedTransaction, const FOnAsobiResponse& Callback)
 {
 	TSharedPtr<FJsonObject> Body = MakeShareable(new FJsonObject);

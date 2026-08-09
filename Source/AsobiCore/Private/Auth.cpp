@@ -8,20 +8,37 @@ namespace asobi::core
 namespace
 {
 
+// asobi answers every failure with a shared error object,
+// {"error": {"code": ..., "message": ..., "details": {...}}}. TopLevelString
+// returns nullopt for an object value, so against any current server this fell
+// straight through to kAuthErrorUnknown and both halves were lost - a wrong
+// password and a rate limit arrived identical. The flat legacy form,
+// {"error": "some_string"}, is still read: a few routes kept it and an older
+// deployment may send one.
 AuthError MakeError(int StatusCode, std::string_view Body)
 {
     AuthError Out;
     Out.StatusCode = StatusCode;
 
-    const auto Reason = json::TopLevelString(Body, "error");
-    if (Reason && !Reason->empty())
+    if (const auto Object = json::RawPath(Body, {"error"}); Object && !Object->empty() && (*Object)[0] == '{')
     {
-        Out.Reason = *Reason;
+        if (const auto Code = json::TopLevelString(*Object, "code"))
+        {
+            Out.Code = *Code;
+        }
+        if (const auto Message = json::TopLevelString(*Object, "message"); Message && !Message->empty())
+        {
+            Out.Reason = *Message;
+            return Out;
+        }
     }
-    else
+    else if (const auto Flat = json::TopLevelString(Body, "error"); Flat && !Flat->empty())
     {
-        Out.Reason = std::string(StatusCode == 0 ? kAuthErrorNetwork : kAuthErrorUnknown);
+        Out.Reason = *Flat;
+        return Out;
     }
+
+    Out.Reason = std::string(StatusCode == 0 ? kAuthErrorNetwork : kAuthErrorUnknown);
     return Out;
 }
 

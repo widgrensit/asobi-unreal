@@ -34,7 +34,14 @@ struct AuthError
 {
     // HTTP status, or 0 when the request never got a response.
     int StatusCode = 0;
+
+    // Human-readable. Log it; never branch on it.
     std::string Reason;
+
+    // The machine-readable half of asobi's shared error object, e.g.
+    // "player.confirmation_failed". Branch on this. Empty when the server sent
+    // a flat legacy body, or no error object at all.
+    std::string Code;
 };
 
 struct AuthResult

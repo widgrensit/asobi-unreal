@@ -111,13 +111,30 @@ Auth->GuestDevice(
 	}));
 ```
 
-To forget the guest ("switch account" / "play as someone else" / a local "delete my data"), erase the stored pair — the next `GuestDevice` mints a brand-new guest. This is local-only; pair it with `Logout` to end the current session, or call `UpgradeGuest` first to keep the player:
+To forget the guest ("switch account" / "play as someone else"), erase the stored pair — the next `GuestDevice` mints a brand-new guest. This is local-only; pair it with `Logout` to end the current session, or call `UpgradeGuest` first to keep the player:
 
 ```cpp
 #include "AsobiDevice.h"
 
 AsobiDevice::Clear();
 ```
+
+### Deleting the account
+
+`AsobiDevice::Clear` deletes nothing on the server — the account and its data stay, merely unreachable from that install. For an actual "delete my data" request, and for the in-app account deletion the app stores require, erase it:
+
+```cpp
+// Guest or provider-only account: no password to confirm with.
+Client->Auth->EraseAccount(TEXT(""), FOnAsobiResponse::CreateLambda(
+	[](bool bSuccess, const FString& Response) { /* ... */ }));
+
+// Account with a password: it must be echoed.
+Client->Auth->EraseAccount(TEXT("secret123"), Callback);
+```
+
+Irreversible. A wrong password comes back `403` with code `player.confirmation_failed` and changes nothing. On success the local session is cleared, because the server deleted the token pair in the same transaction; anything afterwards on that session is a `401`, which for a retried erase means it already worked.
+
+Needs a server carrying `POST /api/v1/players/me/erase`; older ones answer 404.
 
 The default byte source is **best-effort**, not a guaranteed CSPRNG on every platform (UE ships no portable one). For higher assurance, or to choose your own storage slot, drive `AsobiDevice::LoadOrCreate` with options and pass the pair to `Guest()`:
 

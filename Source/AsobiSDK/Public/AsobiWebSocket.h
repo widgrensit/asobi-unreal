@@ -60,6 +60,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldJoined, const FAsobiWor
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiWorldLeft);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldList, const TArray<FAsobiWorldInfo>&, Worlds);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldTick, int64, Tick, const FString&, UpdatesJson);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldAck, const FAsobiWorldAck&, Ack);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldTerrain, const FAsobiWorldTerrainChunk&, Chunk);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldEvent, const FString&, Event, const FString&, PayloadJson);
 
@@ -174,6 +175,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void WorldInput(const FString& DataJson);
 
+	// Send input stamped with a per-input Seq to opt into world.ack
+	// reconciliation - the server echoes back the highest Seq it has consumed
+	// via OnWorldAck. Seq rides as a top-level sibling of payload, not nested.
+	// UFUNCTIONs cannot overload by name, so this is a distinct entry point from
+	// WorldInput rather than an optional argument on it.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldInputWithSeq(const FString& DataJson, int64 Seq);
+
 	// Direct messages
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void DmSend(const FString& RecipientId, const FString& Content);
@@ -258,6 +267,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldTick OnWorldTick;
 
+	// Fires on a world.ack push - the server's ack of the highest world.input
+	// Seq it consumed for you as of Ack.Tick. Fires only if you stamped a Seq
+	// via WorldInputWithSeq; use it to reconcile client-side prediction.
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldAck OnWorldAck;
+
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldTerrain OnWorldTerrain;
 
@@ -309,8 +324,13 @@ public:
 private:
 	void Send(const FString& Type, const TSharedPtr<FJsonObject>& Payload);
 
-	/** Send and return the cid written, so a caller can await the reply. */
-	FString SendWithCid(const FString& Type, const TSharedPtr<FJsonObject>& Payload);
+	/**
+	 * Send and return the cid written, so a caller can await the reply. When Seq
+	 * is set it is stamped as a top-level sibling of payload (numeric), for the
+	 * world.input prediction path.
+	 */
+	FString SendWithCid(const FString& Type, const TSharedPtr<FJsonObject>& Payload,
+	                    const TOptional<int64>& Seq = TOptional<int64>());
 
 	/** Returns true if the frame was an RPC reply and was routed to its caller. */
 	bool RouteRpcReply(const FString& Type, const FString& MessageString);

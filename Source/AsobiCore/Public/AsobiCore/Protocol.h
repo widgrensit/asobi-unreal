@@ -61,6 +61,7 @@ enum class EventId
     SessionHeartbeat,
     VoteCastOk,
     VoteVetoOk,
+    WorldAck,
     WorldFinished,
     WorldJoined,
     WorldLeft,
@@ -72,7 +73,7 @@ enum class EventId
 
 // Canonical event count — keep in sync with EventId enum and the fixture
 // corpus. Compile-time constant so tests can assert without runtime work.
-constexpr std::size_t kEventCount = 38;
+constexpr std::size_t kEventCount = 39;
 
 // Maps a wire-`type` string ("match.matched", "world.tick", ...) to its
 // EventId. Returns nullopt if the type is unknown.

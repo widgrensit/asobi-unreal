@@ -130,6 +130,21 @@ TEST_CASE("module.event dispatches regardless of the inner event name")
     CHECK(ParseEventId(*Unfamiliar) == std::optional<EventId>(EventId::ModuleEvent));
 }
 
+// world.ack is a distinct typed frame (core v0.84.0), not a member of the
+// generic world.* passthrough - "world.ack" resolves to its own EventId so the
+// dispatcher can surface it as a typed ack rather than a bare world event named
+// "ack". Its tick/seq extraction is engine-side; this only pins the identity.
+TEST_CASE("world.ack resolves to its own EventId")
+{
+    CHECK(ParseEventId("world.ack") == std::optional<EventId>(EventId::WorldAck));
+
+    const auto Type = ParseEnvelopeType(
+        R"({"type":"world.ack","payload":{"tick":42,"seq":412}})");
+    REQUIRE(Type.has_value());
+    CHECK(*Type == "world.ack");
+    CHECK(ParseEventId(*Type) == std::optional<EventId>(EventId::WorldAck));
+}
+
 TEST_CASE("AllKnownEvents has no duplicates and matches kEventCount")
 {
     const auto& Events = AllKnownEvents();

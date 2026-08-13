@@ -390,3 +390,15 @@ struct FAsobiModuleEvent
 	UPROPERTY(BlueprintReadOnly) FString Event;
 	UPROPERTY(BlueprintReadOnly) FString DataJson;
 };
+
+// world.ack - the server's acknowledgement of the highest world.input Seq it
+// has consumed for you as of Tick. Sent only to connections that stamped a seq
+// on their input; use it to reconcile client-side prediction.
+USTRUCT(BlueprintType)
+struct FAsobiWorldAck
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) int64 Tick = 0;
+	UPROPERTY(BlueprintReadOnly) int64 Seq = 0;
+};

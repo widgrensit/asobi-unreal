@@ -272,14 +272,20 @@ snapshot. `UpdatesJson` is the `updates` array; each entry carries an `op`:
 A new zone subscription opens with a full `"a"` snapshot of that zone's entities,
 tagged tick `0`, and the frames after it are deltas. Joining subscribes you to your
 whole interest ring, so a join delivers one snapshot per loaded, non-empty zone in
-it, several frames rather than one. A zone holding no entities sends nothing at
-all.
+it, several frames rather than one. A zone holding no entities skips the entity
+snapshot, but the terrain push after it is unconditional, so a world with a terrain
+provider still delivers that zone's terrain chunk.
 
-A one-step crossing usually delivers nothing new. At `view_radius` 1 the
-destination zone is already in your ring, so subscribing to it again is an
-idempotent no-op and no snapshot is resent. Fresh snapshots arrive only when a zone
-enters your ring for the first time; a zone leaving the ring sends an `"r"` for
-each of its entities.
+A crossing delivers fresh snapshots too. It recomputes the ring, and every zone
+that just entered it is a new subscription replaying a full snapshot. Only the
+destination zone is a no-op: at `view_radius` 1 it was already in the old ring, so
+resubscribing to it changes nothing. Do not read that one no-op as the whole
+crossing being quiet.
+
+Nor is a snapshot a once-per-zone event. Leaving the ring unsubscribes you, and
+that zone sends an `"r"` for each of its entities on the way out. Walk back in and
+you resubscribe and get another full snapshot, so a player oscillating across a
+boundary re-snapshots every time.
 
 Accumulate the deltas into your own state map: assigning `UpdatesJson` wholesale to
 an "authoritative state" variable is wrong, and a map seeded only from `"u"` entries
@@ -296,10 +302,11 @@ the pending buffer. The loop:
 3. Fold every `OnWorldTick` delta into your authoritative state.
 4. On `OnWorldAck`, discard the ack unless `Ack.Seq` beats your running maximum, since a lower one is a stale zone's mark. Otherwise store it as the new maximum, drop every pending input with `Seq <=` it, and re-apply the remainder in `Seq` order on top of that state.
 
-The ack only rides broadcast ticks, and `broadcast_interval` gates each zone's
-broadcast separately rather than the connection's: every subscribed zone decides
-for itself, so a client in 9 zones sees 9 independent streams, not one. It
-defaults to 3 simulation ticks; set it to 1 for an ack every tick per zone, which
+The ack only rides broadcast ticks. A single ticker per world fans one shared tick
+number out to every zone, and `broadcast_interval` is one world-level value copied
+into each zone, so zones are not on independent schedules: the several acks a
+multi-zone subscriber receives all land together on the same broadcast tick. It
+defaults to 3 simulation ticks; set it to 1 for an ack every tick, which
 is what prediction wants
 ([world server config](https://asobi.dev/docs/world-server)).
 

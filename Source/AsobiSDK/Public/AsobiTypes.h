@@ -391,9 +391,12 @@ struct FAsobiModuleEvent
 	UPROPERTY(BlueprintReadOnly) FString DataJson;
 };
 
-// world.ack - the server's acknowledgement of the highest world.input Seq it
-// has consumed for you as of Tick. Sent only to connections that stamped a seq
-// on their input; use it to reconcile client-side prediction.
+// world.ack - a zone's acknowledgement of the highest world.input Seq it has
+// consumed for you as of Tick. Sent only to connections that stamped a seq on
+// their input. The mark is per zone, not per connection: every subscribed zone
+// acks its own, nothing in the frame says which one sent it, and Seq can go
+// backwards between frames. Reconcile against a running maximum you keep
+// yourself, never against Seq alone. See widgrensit/asobi#477.
 USTRUCT(BlueprintType)
 struct FAsobiWorldAck
 {

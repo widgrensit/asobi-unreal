@@ -149,7 +149,7 @@ Auth->Guest(Creds.DeviceId, Creds.DeviceSecret, OnGuest);
 
 ## Client-side prediction
 
-`WorldInput` sends no sequence number, and the server acks only connections that
+`WorldInput` sends no sequence number, and the server acks only players who
 stamped one. To reconcile a prediction, stamp every input with your own counter
 via `WorldInputWithSeq` and bind `OnWorldAck`.
 
@@ -176,6 +176,7 @@ public:
 
 private:
 	int64 NextSeq = 0;
+	int64 AckedSeq = -1;
 };
 ```
 
@@ -191,7 +192,13 @@ void UMyClass::Play(UAsobiWebSocket* WebSocket)
 
 void UMyClass::HandleWorldAck(const FAsobiWorldAck& Ack)
 {
-	// Ack.Tick and Ack.Seq are both int64.
+	// Ack.Tick and Ack.Seq are both int64. Acks arrive from every zone you are
+	// subscribed to, so Ack.Seq is not monotonic - keep a running maximum.
+	if (Ack.Seq <= AckedSeq)
+	{
+		return;
+	}
+	AckedSeq = Ack.Seq;
 }
 ```
 
@@ -206,25 +213,50 @@ a top-level sibling of `payload`, never nested:
 {"type":"world.ack","payload":{"tick":42,"seq":412}}
 ```
 
-`Ack.Seq` is a high-water mark: the highest input the server had consumed for you
-as of `Ack.Tick`, not a receipt for one input. A rejected input still advances
-it, so a dropped input never strands the client. `Ack.Tick` is the broadcast tick
-number, the same counter `OnWorldTick` reports.
+`Ack.Seq` is a high-water mark: the highest input the sending zone had consumed
+for you as of `Ack.Tick`, not a receipt for one input. A rejected input still
+advances it, so a dropped input never strands the client. `Ack.Tick` is that
+zone's broadcast tick number, the same counter `OnWorldTick` reports on a delta
+frame. The snapshot a new zone subscription opens with is not a delta and goes
+out as tick `0`, so do not read every `OnWorldTick` tick as a step forward in
+time.
 
 Keep `Seq` within `0 .. 9007199254740991` (2^53-1). A value outside that range is
 ignored, but the input is not: it is still queued and applied to the world as
 normal, and only the acknowledgement for it is skipped. Nor does the ack stream
-go quiet. If the server already holds a seq for you it keeps sending `world.ack`
+go quiet. A zone that already holds a seq for you keeps sending `world.ack` on
 every broadcast tick carrying that older high-water mark, it just stops
 advancing. So do not seed the counter from a nanosecond timestamp even though
 `int64` holds one; the SDK also stamps `seq` through a double, which loses
 precision above 2^53 before the frame leaves.
 
-The SDK keeps no counter of its own, and the server records only the highest
-`Seq` it has seen for you, so a `Seq` below one already recorded is never acked
-again. Keep the counter monotonic for the life of the connection. The server's
-record dies with the socket, so a counter restarting at 0 after a reconnect acks
-normally.
+The SDK keeps no counter of its own, so keep `Seq` monotonic for the life of the
+connection: a `Seq` at or below one already recorded is never acked again.
+
+The record is per zone, not per connection. The default `view_radius` of 1 puts
+you in a 3x3 interest ring, up to 9 zones at once, and each of them records the
+highest `Seq` it has seen for you and acks it on its own broadcast. Two things
+follow, and both are visible to any client that moves:
+
+- More than one `world.ack` per broadcast tick, one from each subscribed zone
+  holding a recorded seq for you.
+- `Ack.Seq` going backwards between consecutive acks. The zone you moved away from
+  stays in your ring and keeps emitting its own frozen mark. Nothing in the frame
+  says which zone sent it.
+
+So keep a running maximum and ignore any ack whose `Seq` does not exceed it. Your
+own counter never goes backwards; what arrives does, and "drop everything at or
+below `Ack.Seq` and replay the rest" only holds against a mark you have made
+monotonic yourself. Skip that and a zone crossing re-applies inputs the server has
+already consumed.
+
+Each zone prunes its record to its own current subscribers every tick, so a mark
+dies with the zone subscription rather than with the socket. A reconnect leaves no
+zone holding one, so a counter restarting at 0 acks normally.
+
+The server source and guides still call this ack "per-connection". That wording is
+wrong and is tracked as
+[widgrensit/asobi#477](https://github.com/widgrensit/asobi/issues/477).
 
 ### Reconciling against world.tick
 
@@ -237,28 +269,39 @@ snapshot. `UpdatesJson` is the `updates` array; each entry carries an `op`:
 | `"u"` | Updated, diff | `id` plus only the changed fields |
 | `"r"` | Removed | `id` only |
 
-Every zone subscription opens with a full `"a"` snapshot of that zone's entities,
-and the ticks after it are deltas. Crossing into a new zone is a new
-subscription, so it delivers a fresh full snapshot of the destination zone; the
-snapshot is not a one-off at join. Accumulate the deltas into your own state map:
-assigning `UpdatesJson` wholesale to an "authoritative state" variable is wrong,
-and a map seeded only from `"u"` entries stays empty, because your own player
-first arrives as an `"a"`.
+A new zone subscription opens with a full `"a"` snapshot of that zone's entities,
+tagged tick `0`, and the frames after it are deltas. Joining subscribes you to your
+whole interest ring, so a join delivers one snapshot per loaded, non-empty zone in
+it, several frames rather than one. A zone holding no entities sends nothing at
+all.
 
-When a broadcast tick produced changes the server sends `world.tick` first and
-`world.ack` second, on the same connection. When nothing changed there is no
-`world.tick` at all and the ack arrives on its own. So prune and replay in the
-`OnWorldAck` handler, never inside `OnWorldTick`: an ack that arrives with no
-tick beside it still has to drain the pending buffer. The loop:
+A one-step crossing usually delivers nothing new. At `view_radius` 1 the
+destination zone is already in your ring, so subscribing to it again is an
+idempotent no-op and no snapshot is resent. Fresh snapshots arrive only when a zone
+enters your ring for the first time; a zone leaving the ring sends an `"r"` for
+each of its entities.
+
+Accumulate the deltas into your own state map: assigning `UpdatesJson` wholesale to
+an "authoritative state" variable is wrong, and a map seeded only from `"u"` entries
+stays empty, because your own player first arrives as an `"a"`.
+
+When a zone's broadcast tick produced changes it sends `world.tick` first and
+`world.ack` second. When nothing changed that zone sends no `world.tick` at all and
+the ack arrives on its own. So prune and replay in the `OnWorldAck` handler, never
+inside `OnWorldTick`: an ack that arrives with no tick beside it still has to drain
+the pending buffer. The loop:
 
 1. Increment `NextSeq`, apply the input locally, and keep it in a `TMap<int64, FMyInput>` of pending inputs (`FMyInput` is your own struct).
 2. Send it with `WorldInputWithSeq`.
 3. Fold every `OnWorldTick` delta into your authoritative state.
-4. On `OnWorldAck`, drop every pending input with `Seq <= Ack.Seq`, then re-apply the remainder in `Seq` order on top of that state.
+4. On `OnWorldAck`, discard the ack unless `Ack.Seq` beats your running maximum, since a lower one is a stale zone's mark. Otherwise store it as the new maximum, drop every pending input with `Seq <=` it, and re-apply the remainder in `Seq` order on top of that state.
 
-The ack only rides broadcast ticks. `broadcast_interval` defaults to 3
-simulation ticks; set it to 1 for an ack every tick, which is what prediction
-wants ([world server config](https://asobi.dev/docs/world-server)).
+The ack only rides broadcast ticks, and `broadcast_interval` gates each zone's
+broadcast separately rather than the connection's: every subscribed zone decides
+for itself, so a client in 9 zones sees 9 independent streams, not one. It
+defaults to 3 simulation ticks; set it to 1 for an ack every tick per zone, which
+is what prediction wants
+([world server config](https://asobi.dev/docs/world-server)).
 
 Binding `OnWorldAck` is not enough on its own: keep calling plain `WorldInput`
 and nothing ever fires, with no error. Input sent while you are not in a zone is

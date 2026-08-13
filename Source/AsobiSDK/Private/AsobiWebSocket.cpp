@@ -626,9 +626,11 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		OnWorldList.Broadcast(Worlds);
 		break;
 	}
-	// world.ack carries the highest world.input seq the server has consumed for
-	// this connection as of tick. Per-connection, and sent only to clients that
-	// stamped a seq on their input - it never rides the shared world.tick.
+	// world.ack carries the highest world.input seq the sending zone has consumed
+	// for this player as of tick. Per zone, not per connection
+	// (widgrensit/asobi#477), so seq is not monotonic across acks. Sent only to
+	// clients that stamped a seq on their input - it never rides the shared
+	// world.tick.
 	case EventId::WorldAck:
 	{
 		FAsobiWorldAck Ack;

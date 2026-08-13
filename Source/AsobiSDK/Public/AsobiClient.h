@@ -101,6 +101,7 @@ public:
 	static FAsobiDirectMessage ParseDirectMessage(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiGameError ParseGameError(const TSharedPtr<FJsonObject>& Json);
 	static FAsobiGameMessage ParseGameMessage(const TSharedPtr<FJsonObject>& Json);
+	static FAsobiModuleEvent ParseModuleEvent(const TSharedPtr<FJsonObject>& Json);
 
 private:
 	void SendRequest(const FString& Verb, const FString& Path, const FString& Body, const FOnAsobiStatusResponse& Callback);

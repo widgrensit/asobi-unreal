@@ -111,6 +111,25 @@ TEST_CASE("ParseEventId rejects unknown wire strings")
     CHECK_FALSE(ParseEventId("MATCH.MATCHED").has_value());
 }
 
+// module.event is a single frame with no game.* twin, and its inner `event`
+// name is carried in the payload as data - it is not part of the wire `type`,
+// so it never gates dispatch. An envelope with an unfamiliar inner event still
+// resolves to EventId::ModuleEvent; the freeze-at-1.0 wire relies on this.
+TEST_CASE("module.event dispatches regardless of the inner event name")
+{
+    CHECK(ParseEventId("module.event") == std::optional<EventId>(EventId::ModuleEvent));
+
+    const auto Known = ParseEnvelopeType(
+        R"({"type":"module.event","payload":{"event":"quests.completed"}})");
+    REQUIRE(Known.has_value());
+    CHECK(ParseEventId(*Known) == std::optional<EventId>(EventId::ModuleEvent));
+
+    const auto Unfamiliar = ParseEnvelopeType(
+        R"({"type":"module.event","payload":{"event":"mystery.happened"}})");
+    REQUIRE(Unfamiliar.has_value());
+    CHECK(ParseEventId(*Unfamiliar) == std::optional<EventId>(EventId::ModuleEvent));
+}
+
 TEST_CASE("AllKnownEvents has no duplicates and matches kEventCount")
 {
     const auto& Events = AllKnownEvents();

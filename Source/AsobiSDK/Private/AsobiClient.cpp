@@ -689,3 +689,21 @@ FAsobiGameMessage UAsobiClient::ParseGameMessage(const TSharedPtr<FJsonObject>& 
 	}
 	return M;
 }
+
+FAsobiModuleEvent UAsobiClient::ParseModuleEvent(const TSharedPtr<FJsonObject>& Json)
+{
+	FAsobiModuleEvent E;
+	if (!Json.IsValid()) return E;
+	E.Module = GetStr(Json, TEXT("module"));
+	E.Event = GetStr(Json, TEXT("event"));
+	// `data` is defined by the extension, so it reaches the app as raw JSON
+	// rather than a shape this SDK guessed at.
+	const TSharedPtr<FJsonValue>* Found = Json->Values.Find(TEXT("data"));
+	if (Found && (*Found).IsValid())
+	{
+		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&E.DataJson);
+		FJsonSerializer::Serialize((*Found).ToSharedRef(), FString(), Writer);
+	}
+	return E;
+}

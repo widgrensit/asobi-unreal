@@ -244,6 +244,18 @@ void UAsobiWebSocket::WorldInput(const FString& DataJson)
 	Send(TEXT("world.input"), Payload);
 }
 
+void UAsobiWebSocket::WorldInputWithSeq(const FString& DataJson, int64 Seq)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	TSharedPtr<FJsonObject> DataObj;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(DataJson);
+	if (FJsonSerializer::Deserialize(Reader, DataObj) && DataObj.IsValid())
+	{
+		Payload->SetObjectField(TEXT("data"), DataObj);
+	}
+	SendWithCid(TEXT("world.input"), Payload, TOptional<int64>(Seq));
+}
+
 void UAsobiWebSocket::DmSend(const FString& RecipientId, const FString& Content)
 {
 	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
@@ -257,7 +269,8 @@ void UAsobiWebSocket::Send(const FString& Type, const TSharedPtr<FJsonObject>& P
 	SendWithCid(Type, Payload);
 }
 
-FString UAsobiWebSocket::SendWithCid(const FString& Type, const TSharedPtr<FJsonObject>& Payload)
+FString UAsobiWebSocket::SendWithCid(const FString& Type, const TSharedPtr<FJsonObject>& Payload,
+                                     const TOptional<int64>& Seq)
 {
 	if (!WebSocket.IsValid() || !WebSocket->IsConnected())
 	{
@@ -274,6 +287,13 @@ FString UAsobiWebSocket::SendWithCid(const FString& Type, const TSharedPtr<FJson
 	TSharedPtr<FJsonObject> Msg = MakeShareable(new FJsonObject);
 	Msg->SetStringField(TEXT("type"), Type);
 	Msg->SetStringField(TEXT("cid"), Cid);
+
+	// A per-input sequence for world.ack reconciliation. Rides as a top-level
+	// sibling of payload, never nested, and only when provided.
+	if (Seq.IsSet())
+	{
+		Msg->SetNumberField(TEXT("seq"), static_cast<double>(Seq.GetValue()));
+	}
 
 	if (Payload.IsValid())
 	{
@@ -604,6 +624,29 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			}
 		}
 		OnWorldList.Broadcast(Worlds);
+		break;
+	}
+	// world.ack carries the highest world.input seq the server has consumed for
+	// this connection as of tick. It is a distinct typed frame - kept ahead of
+	// the generic world.* handlers so it surfaces as FAsobiWorldAck rather than
+	// a bare world event named "ack".
+	case EventId::WorldAck:
+	{
+		FAsobiWorldAck Ack;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			double TickNum = 0;
+			if ((*PayloadObj)->TryGetNumberField(TEXT("tick"), TickNum))
+			{
+				Ack.Tick = static_cast<int64>(TickNum);
+			}
+			double SeqNum = 0;
+			if ((*PayloadObj)->TryGetNumberField(TEXT("seq"), SeqNum))
+			{
+				Ack.Seq = static_cast<int64>(SeqNum);
+			}
+		}
+		OnWorldAck.Broadcast(Ack);
 		break;
 	}
 	case EventId::WorldTick:

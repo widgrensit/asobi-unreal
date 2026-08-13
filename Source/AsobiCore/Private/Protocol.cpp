@@ -51,6 +51,7 @@ constexpr Entry kTable[] = {
     {"session.heartbeat",        EventId::SessionHeartbeat},
     {"vote.cast_ok",             EventId::VoteCastOk},
     {"vote.veto_ok",             EventId::VoteVetoOk},
+    {"world.ack",                EventId::WorldAck},
     {"world.finished",           EventId::WorldFinished},
     {"world.joined",             EventId::WorldJoined},
     {"world.left",               EventId::WorldLeft},

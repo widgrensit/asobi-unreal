@@ -627,9 +627,8 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		break;
 	}
 	// world.ack carries the highest world.input seq the server has consumed for
-	// this connection as of tick. It is a distinct typed frame - kept ahead of
-	// the generic world.* handlers so it surfaces as FAsobiWorldAck rather than
-	// a bare world event named "ack".
+	// this connection as of tick. Per-connection, and sent only to clients that
+	// stamped a seq on their input - it never rides the shared world.tick.
 	case EventId::WorldAck:
 	{
 		FAsobiWorldAck Ack;

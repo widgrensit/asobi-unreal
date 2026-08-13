@@ -147,6 +147,85 @@ const FAsobiDeviceCredentials Creds = AsobiDevice::LoadOrCreate(Options);
 Auth->Guest(Creds.DeviceId, Creds.DeviceSecret, OnGuest);
 ```
 
+## Client-side prediction
+
+`WorldInput` sends no sequence number, and the server acks only connections that
+stamped one. To reconcile a prediction, stamp every input with your own counter
+via `WorldInputWithSeq` and bind `OnWorldAck`:
+
+```cpp
+WebSocket->OnWorldAck.AddDynamic(this, &UMyClass::HandleWorldAck);
+
+// Seq is yours to generate and increment; the SDK does neither.
+// NextSeq is an int64 member of your class.
+WebSocket->WorldInputWithSeq(TEXT("{\"move_x\":1}"), ++NextSeq);
+```
+
+```cpp
+void UMyClass::HandleWorldAck(const FAsobiWorldAck& Ack)
+{
+	// Ack.Tick and Ack.Seq are both int64.
+}
+```
+
+`WorldInputWithSeq(const FString& DataJson, int64 Seq)` is a second Blueprint
+node rather than an extra pin on `WorldInput(const FString& DataJson)`, because
+UFUNCTIONs cannot overload by name. Both wrap `DataJson` as `payload.data`; only
+`WorldInputWithSeq` stamps `seq`, and it rides as a top-level sibling of
+`payload`, never nested:
+
+```json
+{"type":"world.input","cid":"c-7","seq":412,"payload":{"data":{"move_x":1}}}
+{"type":"world.ack","payload":{"tick":42,"seq":412}}
+```
+
+`Ack.Seq` is a high-water mark: the highest input the server had consumed for you
+as of `Ack.Tick`, not a receipt for one input. A rejected input still advances
+it, so a dropped input never strands the client.
+
+Keep `Seq` within `0 .. 9007199254740991` (2^53-1). The server drops anything
+outside that range and sends no ack, silently, so do not seed the counter from a
+nanosecond timestamp even though `int64` holds one. The SDK stores no counter of
+its own, and the server forgets your recorded seq once you leave the zone or the
+socket drops, so restarting the counter after a rejoin is safe.
+
+### Reconciling against world.tick
+
+`OnWorldTick(int64 Tick, const FString& UpdatesJson)` delivers a **delta**, not a
+snapshot. `UpdatesJson` is the `updates` array; each entry carries an `op`:
+
+| `op` | Meaning | Fields |
+|---|---|---|
+| `"a"` | Added, full state | `id` plus every field on the entity |
+| `"u"` | Updated, diff | `id` plus only the changed fields |
+| `"r"` | Removed | `id` only |
+
+Only the first tick after joining is a full snapshot, so accumulate the deltas
+into your own state map. Assigning `UpdatesJson` wholesale to an "authoritative
+state" variable is wrong, and a map seeded only from `"u"` entries stays empty,
+because your own player first arrives as an `"a"`.
+
+For one tick the server sends `world.tick` first and `world.ack` second, on the
+same connection, so prune and replay in the ack handler - while `OnWorldTick`
+runs, the pending buffer has not been pruned yet. The loop:
+
+1. Increment `NextSeq`, apply the input locally, and keep it in a `TMap<int64, FMyInput>` of pending inputs.
+2. Send it with `WorldInputWithSeq`.
+3. Fold every `OnWorldTick` delta into your authoritative state.
+4. On `OnWorldAck`, drop every pending input with `Seq <= Ack.Seq`, then re-apply the remainder in `Seq` order on top of that state.
+
+The ack only rides broadcast ticks. `broadcast_interval` defaults to 3
+simulation ticks; set it to 1 for an ack every tick, which is what prediction
+wants ([world server config](https://asobi.dev/docs/world-server)).
+
+Binding `OnWorldAck` is not enough on its own: keep calling plain `WorldInput`
+and nothing ever fires, with no error. Needs plugin v1.4.0 or newer -
+`OnWorldAck` and `WorldInputWithSeq` do not exist before it - and a server
+carrying `world.ack` (asobi >= v0.84.0); an older server sends no ack rather than
+an error.
+
+Full frame reference: [client-side prediction](https://asobi.dev/docs/protocols/websocket#client-side-prediction).
+
 ## Extensions (RPC)
 
 Server extensions expose methods over the same socket.
@@ -208,7 +287,7 @@ Blueprint-callable on every subsystem. Typed `USTRUCT` responses for player, wor
 
 - `UAsobiClient` — HTTP + JSON helpers, auth token store
 - `UAsobiAuth`, `UAsobiMatch`, `UAsobiMatchmaker`, `UAsobiWorld`, `UAsobiEconomy`, `UAsobiLeaderboard`, `UAsobiSocial`, `UAsobiStorage`, `UAsobiTournament`, `UAsobiDirectMessage`
-- `UAsobiWebSocket` — real-time client with typed multicast delegates (`OnMatchState`, `OnWorldTick`, `OnWorldTerrain`, `OnDmMessage`, …)
+- `UAsobiWebSocket` — real-time client with typed multicast delegates (`OnMatchState`, `OnWorldTick`, `OnWorldAck`, `OnWorldTerrain`, `OnDmMessage`, …)
 
 ## Demo
 

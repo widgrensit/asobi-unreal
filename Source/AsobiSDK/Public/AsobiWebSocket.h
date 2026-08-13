@@ -267,9 +267,11 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldTick OnWorldTick;
 
-	// Fires on a world.ack push - the server's ack of the highest world.input
-	// Seq it consumed for you as of Ack.Tick. Fires only if you stamped a Seq
-	// via WorldInputWithSeq; use it to reconcile client-side prediction.
+	// Fires on a world.ack push - the highest world.input Seq the sending zone
+	// consumed for you as of Ack.Tick. Fires only if you stamped a Seq via
+	// WorldInputWithSeq; use it to reconcile client-side prediction. The mark is
+	// per zone, not per connection (widgrensit/asobi#477), so Ack.Seq can go
+	// backwards between acks - reconcile against a running maximum.
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldAck OnWorldAck;
 

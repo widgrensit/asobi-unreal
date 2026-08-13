@@ -147,6 +147,182 @@ const FAsobiDeviceCredentials Creds = AsobiDevice::LoadOrCreate(Options);
 Auth->Guest(Creds.DeviceId, Creds.DeviceSecret, OnGuest);
 ```
 
+## Client-side prediction
+
+`WorldInput` sends no sequence number, and the server acks only players who
+stamped one. To reconcile a prediction, stamp every input with your own counter
+via `WorldInputWithSeq` and bind `OnWorldAck`.
+
+`AddDynamic` binds by name, not by address: the method pointer it takes is only a
+type check, and the delegate stores the handler's `FName` and looks it up in the
+class's `UFUNCTION` table. Declare the handler `UFUNCTION()`, or the code
+compiles and the bind fails at runtime:
+
+```cpp
+// MyClass.h
+#include "AsobiWebSocket.h"
+#include "MyClass.generated.h"
+
+UCLASS()
+class UMyClass : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	void Play(UAsobiWebSocket* WebSocket);
+
+	UFUNCTION()
+	void HandleWorldAck(const FAsobiWorldAck& Ack);
+
+private:
+	int64 NextSeq = 0;
+	int64 AckedSeq = -1;
+};
+```
+
+```cpp
+// MyClass.cpp
+void UMyClass::Play(UAsobiWebSocket* WebSocket)
+{
+	WebSocket->OnWorldAck.AddDynamic(this, &UMyClass::HandleWorldAck);
+
+	// Seq is yours to generate and increment; the SDK does neither.
+	WebSocket->WorldInputWithSeq(TEXT("{\"move_x\":1}"), ++NextSeq);
+}
+
+void UMyClass::HandleWorldAck(const FAsobiWorldAck& Ack)
+{
+	// Ack.Tick and Ack.Seq are both int64. Acks arrive from every zone you are
+	// subscribed to, so Ack.Seq is not monotonic - keep a running maximum.
+	if (Ack.Seq <= AckedSeq)
+	{
+		return;
+	}
+	AckedSeq = Ack.Seq;
+}
+```
+
+`WorldInputWithSeq(const FString& DataJson, int64 Seq)` is a second Blueprint
+node rather than an extra pin on `WorldInput(const FString& DataJson)`, because
+UFUNCTIONs cannot overload by name. Both wrap `DataJson` as `payload.data`,
+which the server unwraps; only `WorldInputWithSeq` stamps `seq`, and it rides as
+a top-level sibling of `payload`, never nested:
+
+```json
+{"type":"world.input","cid":"c-7","seq":412,"payload":{"data":{"move_x":1}}}
+{"type":"world.ack","payload":{"tick":42,"seq":412}}
+```
+
+`Ack.Seq` is a high-water mark: the highest input the sending zone had consumed
+for you as of `Ack.Tick`, not a receipt for one input. A rejected input still
+advances it, so a dropped input never strands the client. `Ack.Tick` is that
+zone's broadcast tick number, the same counter `OnWorldTick` reports on a delta
+frame. The snapshot a new zone subscription opens with is not a delta and goes
+out as tick `0`, so do not read every `OnWorldTick` tick as a step forward in
+time.
+
+Keep `Seq` within `0 .. 9007199254740991` (2^53-1). A value outside that range is
+ignored, but the input is not: it is still queued and applied to the world as
+normal, and only the acknowledgement for it is skipped. Nor does the ack stream
+go quiet. A zone that already holds a seq for you keeps sending `world.ack` on
+every broadcast tick carrying that older high-water mark, it just stops
+advancing. So do not seed the counter from a nanosecond timestamp even though
+`int64` holds one; the SDK also stamps `seq` through a double, which loses
+precision above 2^53 before the frame leaves.
+
+The SDK keeps no counter of its own, so keep `Seq` monotonic for the life of the
+connection: a `Seq` at or below one already recorded is never acked again.
+
+The record is per zone, not per connection. The default `view_radius` of 1 puts
+you in a 3x3 interest ring, up to 9 zones at once, and each of them records the
+highest `Seq` it has seen for you and acks it on its own broadcast. Two things
+follow, and both are visible to any client that moves:
+
+- More than one `world.ack` per broadcast tick, one from each subscribed zone
+  holding a recorded seq for you.
+- `Ack.Seq` going backwards between consecutive acks. The zone you moved away from
+  stays in your ring and keeps emitting its own frozen mark. Nothing in the frame
+  says which zone sent it.
+
+So keep a running maximum and ignore any ack whose `Seq` does not exceed it. Your
+own counter never goes backwards; what arrives does, and "drop everything at or
+below `Ack.Seq` and replay the rest" only holds against a mark you have made
+monotonic yourself. Skip that and a zone crossing re-applies inputs the server has
+already consumed.
+
+Each zone prunes its record to its own current subscribers every tick, so a mark
+dies with the zone subscription rather than with the socket. A reconnect leaves no
+zone holding one, so a counter restarting at 0 acks normally.
+
+The server source and guides still call this ack "per-connection". That wording is
+wrong and is tracked as
+[widgrensit/asobi#477](https://github.com/widgrensit/asobi/issues/477).
+
+### Reconciling against world.tick
+
+`OnWorldTick(int64 Tick, const FString& UpdatesJson)` delivers a **delta**, not a
+snapshot. `UpdatesJson` is the `updates` array; each entry carries an `op`:
+
+| `op` | Meaning | Fields |
+|---|---|---|
+| `"a"` | Added, full state | `id` plus every field on the entity |
+| `"u"` | Updated, diff | `id` plus only the changed fields |
+| `"r"` | Removed | `id` only |
+
+A new zone subscription opens with a full `"a"` snapshot of that zone's entities,
+tagged tick `0`, and the frames after it are deltas. Joining subscribes you to your
+whole interest ring, so a join delivers one snapshot per loaded, non-empty zone in
+it, several frames rather than one. A zone holding no entities skips the entity
+snapshot, but the terrain push after it is unconditional, so a world with a terrain
+provider still delivers that zone's chunk on `OnWorldTerrain`.
+
+A crossing delivers fresh snapshots too. It recomputes the ring, and every zone
+that just entered it is a new subscription replaying a full snapshot. Only the
+destination zone is a no-op: at `view_radius` 1 it was already in the old ring, so
+resubscribing to it changes nothing. Do not read that one no-op as the whole
+crossing being quiet.
+
+Nor is a snapshot a once-per-zone event. Leaving the ring unsubscribes you, and
+that zone sends an `"r"` for each of its entities on the way out. Walk back in and
+you resubscribe and get another full snapshot, so a player oscillating across a
+boundary re-snapshots every time.
+
+Accumulate the deltas into your own state map: assigning `UpdatesJson` wholesale to
+an "authoritative state" variable is wrong, and a map seeded only from `"u"` entries
+stays empty, because your own player first arrives as an `"a"`.
+
+When a zone's broadcast tick produced changes it sends `world.tick` first and
+`world.ack` second. When nothing changed that zone sends no `world.tick` at all and
+the ack arrives on its own. So prune and replay in the `OnWorldAck` handler, never
+inside `OnWorldTick`: an ack that arrives with no tick beside it still has to drain
+the pending buffer. The loop:
+
+1. Increment `NextSeq`, apply the input locally, and keep it in a `TMap<int64, FMyInput>` of pending inputs (`FMyInput` is your own struct).
+2. Send it with `WorldInputWithSeq`.
+3. Fold every `OnWorldTick` delta into your authoritative state.
+4. On `OnWorldAck`, discard the ack unless `Ack.Seq` beats your running maximum, since a lower one is a stale zone's mark. Otherwise store it as the new maximum, drop every pending input with `Seq <=` it, and re-apply the remainder in `Seq` order on top of that state.
+
+The ack only rides broadcast ticks. A single ticker per world fans one shared tick
+number out to every zone, and `broadcast_interval` is one world-level value copied
+into each zone, so zones are not on independent schedules: the several acks a
+multi-zone subscriber receives all land together on the same broadcast tick. It
+defaults to 3 simulation ticks; set it to 1 for an ack every tick, which is what
+prediction wants
+([world server config](https://asobi.dev/docs/world-server)).
+
+Binding `OnWorldAck` is not enough on its own: keep calling plain `WorldInput`
+and nothing ever fires, with no error. Input sent while you are not in a zone is
+dropped with no reply at all, which looks the same from the client.
+
+Needs plugin release v1.4.0 or newer, and a server carrying `world.ack`
+(asobi >= v0.84.0); an older server sends no ack rather than an error.
+`AsobiSDK.uplugin` does not track the release version, its `VersionName` reads
+`1.0.0` in every release, so check the source instead: `OnWorldAck` and
+`WorldInputWithSeq` are in `Source/AsobiSDK/Public/AsobiWebSocket.h` from v1.4.0
+onwards and absent before it.
+
+Full frame reference: [client-side prediction](https://asobi.dev/docs/protocols/websocket#client-side-prediction).
+
 ## Extensions (RPC)
 
 Server extensions expose methods over the same socket.
@@ -208,7 +384,7 @@ Blueprint-callable on every subsystem. Typed `USTRUCT` responses for player, wor
 
 - `UAsobiClient` — HTTP + JSON helpers, auth token store
 - `UAsobiAuth`, `UAsobiMatch`, `UAsobiMatchmaker`, `UAsobiWorld`, `UAsobiEconomy`, `UAsobiLeaderboard`, `UAsobiSocial`, `UAsobiStorage`, `UAsobiTournament`, `UAsobiDirectMessage`
-- `UAsobiWebSocket` — real-time client with typed multicast delegates (`OnMatchState`, `OnWorldTick`, `OnWorldTerrain`, `OnDmMessage`, …)
+- `UAsobiWebSocket` — real-time client with typed multicast delegates (`OnMatchState`, `OnWorldTick`, `OnWorldAck`, `OnWorldTerrain`, `OnDmMessage`, …)
 
 ## Demo
 

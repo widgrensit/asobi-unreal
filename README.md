@@ -151,17 +151,44 @@ Auth->Guest(Creds.DeviceId, Creds.DeviceSecret, OnGuest);
 
 `WorldInput` sends no sequence number, and the server acks only connections that
 stamped one. To reconcile a prediction, stamp every input with your own counter
-via `WorldInputWithSeq` and bind `OnWorldAck`:
+via `WorldInputWithSeq` and bind `OnWorldAck`.
+
+`AddDynamic` binds by name, not by address: the method pointer it takes is only a
+type check, and the delegate stores the handler's `FName` and looks it up in the
+class's `UFUNCTION` table. Declare the handler `UFUNCTION()`, or the code
+compiles and the bind fails at runtime:
 
 ```cpp
-WebSocket->OnWorldAck.AddDynamic(this, &UMyClass::HandleWorldAck);
+// MyClass.h
+#include "AsobiWebSocket.h"
+#include "MyClass.generated.h"
 
-// Seq is yours to generate and increment; the SDK does neither.
-// NextSeq is an int64 member of your class.
-WebSocket->WorldInputWithSeq(TEXT("{\"move_x\":1}"), ++NextSeq);
+UCLASS()
+class UMyClass : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	void Play(UAsobiWebSocket* WebSocket);
+
+	UFUNCTION()
+	void HandleWorldAck(const FAsobiWorldAck& Ack);
+
+private:
+	int64 NextSeq = 0;
+};
 ```
 
 ```cpp
+// MyClass.cpp
+void UMyClass::Play(UAsobiWebSocket* WebSocket)
+{
+	WebSocket->OnWorldAck.AddDynamic(this, &UMyClass::HandleWorldAck);
+
+	// Seq is yours to generate and increment; the SDK does neither.
+	WebSocket->WorldInputWithSeq(TEXT("{\"move_x\":1}"), ++NextSeq);
+}
+
 void UMyClass::HandleWorldAck(const FAsobiWorldAck& Ack)
 {
 	// Ack.Tick and Ack.Seq are both int64.
@@ -170,9 +197,9 @@ void UMyClass::HandleWorldAck(const FAsobiWorldAck& Ack)
 
 `WorldInputWithSeq(const FString& DataJson, int64 Seq)` is a second Blueprint
 node rather than an extra pin on `WorldInput(const FString& DataJson)`, because
-UFUNCTIONs cannot overload by name. Both wrap `DataJson` as `payload.data`; only
-`WorldInputWithSeq` stamps `seq`, and it rides as a top-level sibling of
-`payload`, never nested:
+UFUNCTIONs cannot overload by name. Both wrap `DataJson` as `payload.data`,
+which the server unwraps; only `WorldInputWithSeq` stamps `seq`, and it rides as
+a top-level sibling of `payload`, never nested:
 
 ```json
 {"type":"world.input","cid":"c-7","seq":412,"payload":{"data":{"move_x":1}}}
@@ -181,13 +208,23 @@ UFUNCTIONs cannot overload by name. Both wrap `DataJson` as `payload.data`; only
 
 `Ack.Seq` is a high-water mark: the highest input the server had consumed for you
 as of `Ack.Tick`, not a receipt for one input. A rejected input still advances
-it, so a dropped input never strands the client.
+it, so a dropped input never strands the client. `Ack.Tick` is the broadcast tick
+number, the same counter `OnWorldTick` reports.
 
-Keep `Seq` within `0 .. 9007199254740991` (2^53-1). The server drops anything
-outside that range and sends no ack, silently, so do not seed the counter from a
-nanosecond timestamp even though `int64` holds one. The SDK stores no counter of
-its own, and the server forgets your recorded seq once you leave the zone or the
-socket drops, so restarting the counter after a rejoin is safe.
+Keep `Seq` within `0 .. 9007199254740991` (2^53-1). A value outside that range is
+ignored, but the input is not: it is still queued and applied to the world as
+normal, and only the acknowledgement for it is skipped. Nor does the ack stream
+go quiet. If the server already holds a seq for you it keeps sending `world.ack`
+every broadcast tick carrying that older high-water mark, it just stops
+advancing. So do not seed the counter from a nanosecond timestamp even though
+`int64` holds one; the SDK also stamps `seq` through a double, which loses
+precision above 2^53 before the frame leaves.
+
+The SDK keeps no counter of its own, and the server records only the highest
+`Seq` it has seen for you, so a `Seq` below one already recorded is never acked
+again. Keep the counter monotonic for the life of the connection. The server's
+record dies with the socket, so a counter restarting at 0 after a reconnect acks
+normally.
 
 ### Reconciling against world.tick
 
@@ -200,16 +237,21 @@ snapshot. `UpdatesJson` is the `updates` array; each entry carries an `op`:
 | `"u"` | Updated, diff | `id` plus only the changed fields |
 | `"r"` | Removed | `id` only |
 
-Only the first tick after joining is a full snapshot, so accumulate the deltas
-into your own state map. Assigning `UpdatesJson` wholesale to an "authoritative
-state" variable is wrong, and a map seeded only from `"u"` entries stays empty,
-because your own player first arrives as an `"a"`.
+Every zone subscription opens with a full `"a"` snapshot of that zone's entities,
+and the ticks after it are deltas. Crossing into a new zone is a new
+subscription, so it delivers a fresh full snapshot of the destination zone; the
+snapshot is not a one-off at join. Accumulate the deltas into your own state map:
+assigning `UpdatesJson` wholesale to an "authoritative state" variable is wrong,
+and a map seeded only from `"u"` entries stays empty, because your own player
+first arrives as an `"a"`.
 
-For one tick the server sends `world.tick` first and `world.ack` second, on the
-same connection, so prune and replay in the ack handler - while `OnWorldTick`
-runs, the pending buffer has not been pruned yet. The loop:
+When a broadcast tick produced changes the server sends `world.tick` first and
+`world.ack` second, on the same connection. When nothing changed there is no
+`world.tick` at all and the ack arrives on its own. So prune and replay in the
+`OnWorldAck` handler, never inside `OnWorldTick`: an ack that arrives with no
+tick beside it still has to drain the pending buffer. The loop:
 
-1. Increment `NextSeq`, apply the input locally, and keep it in a `TMap<int64, FMyInput>` of pending inputs.
+1. Increment `NextSeq`, apply the input locally, and keep it in a `TMap<int64, FMyInput>` of pending inputs (`FMyInput` is your own struct).
 2. Send it with `WorldInputWithSeq`.
 3. Fold every `OnWorldTick` delta into your authoritative state.
 4. On `OnWorldAck`, drop every pending input with `Seq <= Ack.Seq`, then re-apply the remainder in `Seq` order on top of that state.
@@ -219,10 +261,15 @@ simulation ticks; set it to 1 for an ack every tick, which is what prediction
 wants ([world server config](https://asobi.dev/docs/world-server)).
 
 Binding `OnWorldAck` is not enough on its own: keep calling plain `WorldInput`
-and nothing ever fires, with no error. Needs plugin v1.4.0 or newer -
-`OnWorldAck` and `WorldInputWithSeq` do not exist before it - and a server
-carrying `world.ack` (asobi >= v0.84.0); an older server sends no ack rather than
-an error.
+and nothing ever fires, with no error. Input sent while you are not in a zone is
+dropped with no reply at all, which looks the same from the client.
+
+Needs plugin release v1.4.0 or newer, and a server carrying `world.ack`
+(asobi >= v0.84.0); an older server sends no ack rather than an error.
+`AsobiSDK.uplugin` does not track the release version, its `VersionName` reads
+`1.0.0` in every release, so check the source instead: `OnWorldAck` and
+`WorldInputWithSeq` are in `Source/AsobiSDK/Public/AsobiWebSocket.h` from v1.4.0
+onwards and absent before it.
 
 Full frame reference: [client-side prediction](https://asobi.dev/docs/protocols/websocket#client-side-prediction).
 

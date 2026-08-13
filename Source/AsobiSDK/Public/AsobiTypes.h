@@ -374,3 +374,19 @@ struct FAsobiGameMessage
 	// Native-only; unchanged, for C++ consumers.
 	TSharedPtr<FJsonValue> Message;
 };
+
+// A named push from a server extension, delivered via `module.event`. Unlike
+// game.message it has no game.* twin, so it stands alone. The app routes on the
+// `Event` field - the inner event name is data, not a dispatch gate, so an
+// unfamiliar name still arrives here intact. `Data` is defined by the
+// extension, so it is carried as raw JSON rather than a shape this SDK guessed
+// at.
+USTRUCT(BlueprintType)
+struct FAsobiModuleEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly) FString Module;
+	UPROPERTY(BlueprintReadOnly) FString Event;
+	UPROPERTY(BlueprintReadOnly) FString DataJson;
+};

@@ -469,6 +469,20 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		break;
 	}
 
+	// module.event has no game.* twin, so it stands alone. The whole payload
+	// is surfaced and the app routes on the inner Event - an unfamiliar event
+	// name is data, not a dispatch gate, so it still reaches the app here.
+	case EventId::ModuleEvent:
+	{
+		FAsobiModuleEvent Event;
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			Event = UAsobiClient::ParseModuleEvent(*PayloadObj);
+		}
+		OnModuleEvent.Broadcast(Event);
+		break;
+	}
+
 	case EventId::MatchState:
 		OnMatchState.Broadcast(PayloadStr);
 		break;

@@ -42,6 +42,7 @@ constexpr Entry kTable[] = {
     {"match.vote_vetoed",        EventId::MatchVoteVetoed},
     {"matchmaker.queued",        EventId::MatchmakerQueued},
     {"module.error",             EventId::ModuleError},
+    {"module.event",             EventId::ModuleEvent},
     {"module.message",           EventId::ModuleMessage},
     {"matchmaker.removed",       EventId::MatchmakerRemoved},
     {"notification.new",         EventId::NotificationNew},

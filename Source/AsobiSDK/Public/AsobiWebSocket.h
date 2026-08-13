@@ -74,6 +74,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiGameError, const FAsobiGameE
 // Emitted unconditionally in production (unlike FOnAsobiGameError).
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiGameMessage, const FAsobiGameMessage&, Message);
 
+// A named push from a server extension, delivered via module.event. The app
+// routes on the Event field; the inner event name is data, not a dispatch gate.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiModuleEvent, const FAsobiModuleEvent&, Event);
+
 UCLASS(BlueprintType)
 class ASOBISDK_API UAsobiWebSocket : public UObject
 {
@@ -277,6 +281,11 @@ public:
 	// Unlike OnGameError, this fires unconditionally in production.
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiGameMessage OnGameMessage;
+
+	// Fires on a module.event push - a named event from a server extension.
+	// The whole payload is surfaced; the app routes on Event.Event.
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiModuleEvent OnModuleEvent;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	// Test-only entry point that drives the same dispatch path the live

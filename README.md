@@ -306,8 +306,8 @@ The ack only rides broadcast ticks. A single ticker per world fans one shared ti
 number out to every zone, and `broadcast_interval` is one world-level value copied
 into each zone, so zones are not on independent schedules: the several acks a
 multi-zone subscriber receives all land together on the same broadcast tick. It
-defaults to 3 simulation ticks; set it to 1 for an ack every tick, which
-is what prediction wants
+defaults to 3 simulation ticks; set it to 1 for an ack every tick, which is what
+prediction wants
 ([world server config](https://asobi.dev/docs/world-server)).
 
 Binding `OnWorldAck` is not enough on its own: keep calling plain `WorldInput`

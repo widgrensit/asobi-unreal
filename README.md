@@ -274,7 +274,7 @@ tagged tick `0`, and the frames after it are deltas. Joining subscribes you to y
 whole interest ring, so a join delivers one snapshot per loaded, non-empty zone in
 it, several frames rather than one. A zone holding no entities skips the entity
 snapshot, but the terrain push after it is unconditional, so a world with a terrain
-provider still delivers that zone's terrain chunk.
+provider still delivers that zone's chunk on `OnWorldTerrain`.
 
 A crossing delivers fresh snapshots too. It recomputes the ring, and every zone
 that just entered it is a new subscription replaying a full snapshot. Only the

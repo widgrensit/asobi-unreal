@@ -9,7 +9,8 @@
 #      dispatch tests in the love2d, godot, defold, dart, and js SDKs.
 #      The same job also gates the auth response mapping (token parsing +
 #      HTTP-status/reason error mapping) that UAsobiAuth marshals into
-#      FAsobiAuthTokens / FAsobiError.
+#      FAsobiAuthTokens / FAsobiError, and the outbound world.input payload
+#      shape that UAsobiWebSocket::SendWorldInput puts on the wire.
 #   2. The smoke automation source (Source/AsobiSDK/Private/Tests/
 #      AsobiSmokeTest.cpp) and the runner UObject parse as C++
 #      (best-effort syntax check via clang with a tiny UE-stub include
@@ -74,7 +75,7 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      - name: Run AsobiCore tests (dispatch + auth response mapping)
+      - name: Run AsobiCore tests (dispatch + auth mapping + world.input payload)
         working-directory: build
         run: ctest --output-on-failure
 

@@ -61,3 +61,13 @@ target_include_directories(asobi_core_auth_test PRIVATE Vendor)
 
 add_test(NAME asobi_core_auth
          COMMAND asobi_core_auth_test)
+
+# The outbound world.input payload shape. Needs no fixtures.
+add_executable(asobi_core_world_input_test
+    Tests/WorldInputTest.cpp
+)
+target_link_libraries(asobi_core_world_input_test PRIVATE AsobiCore)
+target_include_directories(asobi_core_world_input_test PRIVATE Vendor)
+
+add_test(NAME asobi_core_world_input
+         COMMAND asobi_core_world_input_test)

@@ -64,6 +64,11 @@ constexpr Entry kTable[] = {
 static_assert(sizeof(kTable) / sizeof(kTable[0]) == kEventCount,
               "kTable size must match kEventCount; update both when adding events");
 
+bool IsJsonSpace(char C)
+{
+    return C == ' ' || C == '\t' || C == '\n' || C == '\r';
+}
+
 } // namespace
 
 std::optional<EventId> ParseEventId(std::string_view Type)
@@ -146,6 +151,29 @@ std::optional<RpcReply> ParseRpcReply(std::string_view Json)
     Reply.bIsError = false;
     Reply.ResultJson = json::RawPath(Json, {"payload", "result"}).value_or("{}");
     return Reply;
+}
+
+std::optional<std::string> WorldInputPayload(std::string_view InputJson)
+{
+    std::size_t I = 0;
+    while (I < InputJson.size() && IsJsonSpace(InputJson[I]))
+    {
+        ++I;
+    }
+
+    // Nothing was supplied, so the input is an empty map rather than a frame
+    // with no payload at all.
+    if (I == InputJson.size())
+    {
+        return std::string("{}");
+    }
+
+    if (InputJson[I] != '{')
+    {
+        return std::nullopt;
+    }
+
+    return std::string(InputJson);
 }
 
 } // namespace asobi::core

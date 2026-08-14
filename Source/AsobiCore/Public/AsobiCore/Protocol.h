@@ -149,9 +149,9 @@ std::optional<RpcReply> ParseRpcReply(std::string_view Json);
 
 // The payload for a `world.input` frame: the caller's JSON as it stands,
 // because the server takes the payload AS the input map and forwards it to
-// `handle_input/3`. Nesting it under a `data` key is not a wrapper the server
-// unwraps for free - it drops every sibling key on the way through
-// (widgrensit/asobi#478). An input that was not supplied is an empty map.
+// `handle_input/3`. A payload whose sole key is `data` mapped to an object is
+// unwrapped instead, a deprecated shape that goes at the next protocol break.
+// An input that was not supplied is an empty map.
 //
 // Returns nullopt when the text is not a JSON object. A payload can only be an
 // object, so an array, a bare value or non-JSON text has nowhere to go: left

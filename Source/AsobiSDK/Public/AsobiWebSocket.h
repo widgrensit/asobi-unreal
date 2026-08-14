@@ -178,8 +178,9 @@ public:
 	// anything that is not a JSON object is dropped with a log line rather than
 	// going out as the empty map it would otherwise become.
 	//
-	// `data` is reserved at the top level of that map: the server unwraps it and
-	// drops every sibling key (widgrensit/asobi#478).
+	// `data` is reserved at the top level of that map in one shape only: a
+	// payload whose sole key is `data` mapped to an object is unwrapped, a
+	// deprecated shape that goes at the next protocol break.
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void WorldInput(const FString& DataJson);
 
@@ -276,11 +277,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldTick OnWorldTick;
 
-	// Fires on a world.ack push - the highest world.input Seq the sending zone
+	// Fires on a world.ack push - the highest world.input Seq the server has
 	// consumed for you as of Ack.Tick. Fires only if you stamped a Seq via
-	// WorldInputWithSeq; use it to reconcile client-side prediction. The mark is
-	// per zone, not per connection (widgrensit/asobi#477), so Ack.Seq can go
-	// backwards between acks - reconcile against a running maximum.
+	// WorldInputWithSeq; use it to reconcile client-side prediction.
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldAck OnWorldAck;
 

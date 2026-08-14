@@ -305,9 +305,9 @@ FString UAsobiWebSocket::SendWithCid(const FString& Type, const TSharedPtr<FJson
 void UAsobiWebSocket::SendWorldInput(const FString& DataJson, const TOptional<int64>& Seq)
 {
 	// The payload IS the input map - the server forwards it to handle_input/3 as
-	// it stands. Nesting it under a `data` key is not free: the server unwraps
-	// that key and every sibling of it disappears (widgrensit/asobi#478). The
-	// rule lives in AsobiCore, at the same FString/std::string seam the reply
+	// it stands. Nesting it under a sole `data` key is not free: the server
+	// unwraps that shape, a deprecated one that goes at the next protocol break.
+	// The rule lives in AsobiCore, at the same FString/std::string seam the reply
 	// path uses, so the licence-free tests gate it.
 	const FTCHARToUTF8 InputUtf8(*DataJson);
 	const std::optional<std::string> PayloadJson =
@@ -655,11 +655,9 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 		OnWorldList.Broadcast(Worlds);
 		break;
 	}
-	// world.ack carries the highest world.input seq the sending zone has consumed
-	// for this player as of tick. Per zone, not per connection
-	// (widgrensit/asobi#477), so seq is not monotonic across acks. Sent only to
-	// clients that stamped a seq on their input - it never rides the shared
-	// world.tick.
+	// world.ack carries the highest world.input seq the server has consumed for
+	// this player as of tick. Sent only to clients that stamped a seq on their
+	// input - it never rides the shared world.tick.
 	case EventId::WorldAck:
 	{
 		FAsobiWorldAck Ack;

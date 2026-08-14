@@ -218,8 +218,9 @@ loop repeats the same mistake every frame.
 payload whose sole key is `data` mapped to an object is unwrapped. That shape is
 deprecated and goes at the next protocol break. A `data` beside other keys, or a
 `data` holding anything but an object, is forwarded verbatim, siblings and all.
-`SendMatchInput` is a separate frame with its own `data` handling and is
-unaffected.
+`SendMatchInput` keeps its own `data` handling: the server's `match.input`
+clause takes `data` as an object or as a JSON string it decodes, so the SDK
+still wraps the payload under `data` there on purpose.
 
 `Ack.Seq` is a high-water mark: the highest input the server had consumed for
 you as of `Ack.Tick`, not a receipt for one input. A rejected input still
@@ -294,8 +295,7 @@ Binding `OnWorldAck` is not enough on its own: keep calling plain `WorldInput`
 and nothing ever fires, with no error. Input sent while you are not in a zone is
 dropped with no reply at all, which looks the same from the client.
 
-Needs plugin release v1.4.0 or newer, and a server carrying `world.ack`
-(asobi >= v0.84.1); an older server sends no ack rather than an error.
+Needs plugin release v1.4.0 or newer, and asobi v0.84.1 or later on the server.
 `AsobiSDK.uplugin` does not track the release version, its `VersionName` reads
 `1.0.0` in every release, so check the source instead: `OnWorldAck` and
 `WorldInputWithSeq` are in `Source/AsobiSDK/Public/AsobiWebSocket.h` from v1.4.0

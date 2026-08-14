@@ -62,9 +62,9 @@ See the [WebSocket protocol guide](https://github.com/widgrensit/asobi/blob/main
 WebSocket->MatchFindOrCreate(TEXT("arena"));
 ```
 
-The reply is `match.joined`, the same frame `JoinMatch` answers with, so the `OnMatchJoined` subscription above already covers it. The payload is the mode only; every other match parameter comes from the mode's server-side config.
+The reply is `match.joined`, the same frame `JoinMatch` answers with, so the `OnMatchJoined` subscription above already covers it. The call takes the mode and nothing else; every other match parameter comes from the mode's server-side config.
 
-The mode must set `quick_play = true`, which defaults to false for match modes; a mode that has not opted in is refused with `quick_play_disabled`. This is not the same axis as `listed`, which is browser visibility. Other refusals: `match_capacity_reached` (node-wide cap), `wrong_mode_type` (a world mode), `join_rate_limited` (the same bucket as `match.join` and `world.join`).
+The mode must set `quick_play = true`, which defaults to false for match modes; a mode that has not opted in is refused with `quick_play_disabled`. This is not the same axis as `listed`, which is browser visibility. Refusals also include `not_found` (the mode name is unknown or not configured, most often a typo), `match_capacity_reached` (node-wide cap), `wrong_mode_type` (a world mode) and `join_rate_limited` (the same bucket as `match.join` and `world.join`).
 
 Requires asobi server v0.86.0 or later.
 

@@ -7,6 +7,7 @@
 #include "Serialization/JsonWriter.h"
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 UAsobiWebSocket::UAsobiWebSocket()
@@ -96,6 +97,10 @@ void UAsobiWebSocket::SendHeartbeat()
 
 void UAsobiWebSocket::SendMatchInput(const FString& DataJson)
 {
+	// Unlike world.input, the wrapper here rides a path the server keeps: the
+	// match.input clause reads `data` as an object or as a JSON string it
+	// decodes. Left as it stands rather than converged with world.input - see
+	// widgrensit/asobi#478.
 	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
 
 	TSharedPtr<FJsonObject> DataObj;
@@ -234,26 +239,12 @@ void UAsobiWebSocket::WorldLeave()
 
 void UAsobiWebSocket::WorldInput(const FString& DataJson)
 {
-	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
-	TSharedPtr<FJsonObject> DataObj;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(DataJson);
-	if (FJsonSerializer::Deserialize(Reader, DataObj) && DataObj.IsValid())
-	{
-		Payload->SetObjectField(TEXT("data"), DataObj);
-	}
-	Send(TEXT("world.input"), Payload);
+	SendWorldInput(DataJson, TOptional<int64>());
 }
 
 void UAsobiWebSocket::WorldInputWithSeq(const FString& DataJson, int64 Seq)
 {
-	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
-	TSharedPtr<FJsonObject> DataObj;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(DataJson);
-	if (FJsonSerializer::Deserialize(Reader, DataObj) && DataObj.IsValid())
-	{
-		Payload->SetObjectField(TEXT("data"), DataObj);
-	}
-	SendWithCid(TEXT("world.input"), Payload, TOptional<int64>(Seq));
+	SendWorldInput(DataJson, TOptional<int64>(Seq));
 }
 
 void UAsobiWebSocket::DmSend(const FString& RecipientId, const FString& Content)
@@ -309,6 +300,44 @@ FString UAsobiWebSocket::SendWithCid(const FString& Type, const TSharedPtr<FJson
 	// The raw token as it will come back, so the reply matches without
 	// re-quoting at every comparison.
 	return FString::Printf(TEXT("\"%s\""), *Cid);
+}
+
+void UAsobiWebSocket::SendWorldInput(const FString& DataJson, const TOptional<int64>& Seq)
+{
+	// The payload IS the input map - the server forwards it to handle_input/3 as
+	// it stands. Nesting it under a `data` key is not free: the server unwraps
+	// that key and every sibling of it disappears (widgrensit/asobi#478). The
+	// rule lives in AsobiCore, at the same FString/std::string seam the reply
+	// path uses, so the licence-free tests gate it.
+	const FTCHARToUTF8 InputUtf8(*DataJson);
+	const std::optional<std::string> PayloadJson =
+		asobi::core::WorldInputPayload(std::string_view(InputUtf8.Get(), InputUtf8.Length()));
+
+	TSharedPtr<FJsonObject> Payload;
+	if (PayloadJson.has_value())
+	{
+		const FString PayloadText = UTF8_TO_TCHAR(PayloadJson->c_str());
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PayloadText);
+		FJsonSerializer::Deserialize(Reader, Payload);
+	}
+
+	if (!Payload.IsValid())
+	{
+		// A payload can only be an object, so a non-object input would go out
+		// as an empty map and the game would watch its input do nothing for
+		// its whole life. Said once per socket - a send loop repeats the same
+		// mistake on every frame.
+		if (!bLoggedBadWorldInput)
+		{
+			bLoggedBadWorldInput = true;
+			UE_LOG(LogTemp, Error,
+				TEXT("[asobi] world.input takes a JSON object - the payload is the input map itself; dropping: %s"),
+				*DataJson);
+		}
+		return;
+	}
+
+	SendWithCid(TEXT("world.input"), Payload, Seq);
 }
 
 void UAsobiWebSocket::Rpc(const FString& Method, const TSharedPtr<FJsonObject>& Params,

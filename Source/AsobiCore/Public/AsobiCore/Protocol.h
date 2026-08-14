@@ -2,8 +2,9 @@
 //
 // This header is the single source of truth for "what server-event types
 // exist" and "given a wire `type` string, which event identity does it map
-// to?". It contains zero Unreal Engine types so it can be unit-tested on
-// stock CI runners with plain C++17.
+// to?", plus the outbound payload rules that are decisions rather than
+// marshalling (see WorldInputPayload). It contains zero Unreal Engine types
+// so it can be unit-tested on stock CI runners with plain C++17.
 //
 // The UE-side SDK (AsobiSDK) bridges into this at the FString/std::string
 // seam in AsobiWebSocket.cpp; the Catch2/doctest-style tests under
@@ -145,5 +146,19 @@ struct RpcReply
 // malformed. Anything that is not rpc.error is treated as a success, so the
 // caller decides which frame types reach this at all.
 std::optional<RpcReply> ParseRpcReply(std::string_view Json);
+
+// The payload for a `world.input` frame: the caller's JSON as it stands,
+// because the server takes the payload AS the input map and forwards it to
+// `handle_input/3`. Nesting it under a `data` key is not a wrapper the server
+// unwraps for free - it drops every sibling key on the way through
+// (widgrensit/asobi#478). An input that was not supplied is an empty map.
+//
+// Returns nullopt when the text is not a JSON object. A payload can only be an
+// object, so an array, a bare value or non-JSON text has nowhere to go: left
+// alone it becomes an empty map, and the game watches its input do nothing with
+// no error anywhere to say why. The caller reports it locally instead. Judged
+// by the first non-whitespace character rather than parsed - this runs once per
+// input frame.
+std::optional<std::string> WorldInputPayload(std::string_view InputJson);
 
 } // namespace asobi::core

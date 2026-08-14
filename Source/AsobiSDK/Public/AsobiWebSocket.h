@@ -172,6 +172,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void WorldLeave();
 
+	// Send one input to the world you are in. DataJson is the input map itself,
+	// as a JSON object: it goes on the wire as the payload, because that is what
+	// the server forwards to handle_input/3. An empty string sends an empty map;
+	// anything that is not a JSON object is dropped with a log line rather than
+	// going out as the empty map it would otherwise become.
+	//
+	// `data` is reserved at the top level of that map: the server unwraps it and
+	// drops every sibling key (widgrensit/asobi#478).
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void WorldInput(const FString& DataJson);
 
@@ -179,7 +187,8 @@ public:
 	// reconciliation - the server echoes back the highest Seq it has consumed
 	// via OnWorldAck. Seq rides as a top-level sibling of payload, not nested.
 	// UFUNCTIONs cannot overload by name, so this is a distinct entry point from
-	// WorldInput rather than an optional argument on it.
+	// WorldInput rather than an optional argument on it. DataJson is read exactly
+	// as WorldInput reads it.
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void WorldInputWithSeq(const FString& DataJson, int64 Seq);
 
@@ -334,6 +343,13 @@ private:
 	FString SendWithCid(const FString& Type, const TSharedPtr<FJsonObject>& Payload,
 	                    const TOptional<int64>& Seq = TOptional<int64>());
 
+	/**
+	 * The one send path behind WorldInput and WorldInputWithSeq. The payload IS
+	 * the input map, so DataJson goes on the wire as payload; text that is not
+	 * a JSON object is dropped and reported once rather than sent.
+	 */
+	void SendWorldInput(const FString& DataJson, const TOptional<int64>& Seq);
+
 	/** Returns true if the frame was an RPC reply and was routed to its caller. */
 	bool RouteRpcReply(const FString& Type, const FString& MessageString);
 
@@ -343,6 +359,13 @@ private:
 	TSharedPtr<IWebSocket> WebSocket;
 	int32 NextCid = 1;
 	FString LastAuthToken;
+
+	/**
+	 * Set once a world.input has been dropped for not being a JSON object. The
+	 * mistake is the same on every frame of a 60Hz send loop, so it is reported
+	 * once per socket instead of flooding the log.
+	 */
+	bool bLoggedBadWorldInput = false;
 
 	/**
 	 * In-flight RPC calls, keyed by the RAW cid token as it appears on the

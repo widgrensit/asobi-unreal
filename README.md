@@ -204,14 +204,28 @@ void UMyClass::HandleWorldAck(const FAsobiWorldAck& Ack)
 
 `WorldInputWithSeq(const FString& DataJson, int64 Seq)` is a second Blueprint
 node rather than an extra pin on `WorldInput(const FString& DataJson)`, because
-UFUNCTIONs cannot overload by name. Both wrap `DataJson` as `payload.data`,
-which the server unwraps; only `WorldInputWithSeq` stamps `seq`, and it rides as
-a top-level sibling of `payload`, never nested:
+UFUNCTIONs cannot overload by name. Both send `DataJson` as the payload itself,
+because that is the map the server forwards to your `handle_input/3`; only
+`WorldInputWithSeq` stamps `seq`, and it rides as a top-level sibling of
+`payload`, never nested:
 
 ```json
-{"type":"world.input","cid":"c-7","seq":412,"payload":{"data":{"move_x":1}}}
+{"type":"world.input","cid":"c-7","seq":412,"payload":{"move_x":1}}
 {"type":"world.ack","payload":{"tick":42,"seq":412}}
 ```
+
+`DataJson` must be a JSON object. An empty string sends an empty map; an array,
+a bare value or text that is not JSON is dropped with a `[asobi]` log line
+rather than going out as the empty map it would otherwise become, which reads
+from the game as input that does nothing. Logged once per socket, since a send
+loop repeats the same mistake every frame.
+
+`data` is reserved at the top level of that map. The server unwraps it and
+drops every sibling key, so `{"action":"fire","data":{"x":1}}` reaches your
+game as `{"x":1}` alone. Tracked as
+[widgrensit/asobi#478](https://github.com/widgrensit/asobi/issues/478).
+`SendMatchInput` is a separate frame with its own `data` handling and is
+unaffected.
 
 `Ack.Seq` is a high-water mark: the highest input the sending zone had consumed
 for you as of `Ack.Tick`, not a receipt for one input. A rejected input still

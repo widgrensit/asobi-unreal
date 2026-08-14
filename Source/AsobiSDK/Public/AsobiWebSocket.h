@@ -120,6 +120,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void SendMatchInput(const FString& DataJson);
 
+	// Gets the player into a live match of Mode, spawning one if there is none.
+	// The match twin of WorldFindOrCreate, and the race-free alternative to
+	// browsing match.list and then joining. Answers with match.joined, the same
+	// reply as JoinMatch, so OnMatchJoined covers it.
+	// The mode must set quick_play = true (match modes default to false) or the
+	// server refuses with quick_play_disabled.
+	// Requires asobi server v0.85.0 or later.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void MatchFindOrCreate(const FString& Mode);
+
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void JoinMatch(const FString& MatchId);
 

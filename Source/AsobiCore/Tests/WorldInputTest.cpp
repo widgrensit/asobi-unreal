@@ -2,8 +2,8 @@
 //
 // The wire shape of an input frame: the payload IS the input map, so the
 // caller's JSON goes out as it stands and is never nested under a `data` key.
-// The server unwraps such a key, dropping every sibling on the way through
-// (widgrensit/asobi#478), so a wrapped input silently loses fields.
+// A payload whose sole key is `data` mapped to an object is unwrapped by the
+// server, a deprecated shape that goes at the next protocol break.
 //
 // Lives here rather than beside AsobiWebSocket.cpp because this tier needs no
 // Unreal Engine install: it runs on stock CI with plain C++17 + doctest, the

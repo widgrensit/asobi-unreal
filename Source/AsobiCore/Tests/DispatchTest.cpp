@@ -130,7 +130,7 @@ TEST_CASE("module.event dispatches regardless of the inner event name")
     CHECK(ParseEventId(*Unfamiliar) == std::optional<EventId>(EventId::ModuleEvent));
 }
 
-// world.ack is a distinct typed frame (core v0.84.0), not a member of the
+// world.ack is a distinct typed frame (core v0.84.1), not a member of the
 // generic world.* passthrough - "world.ack" resolves to its own EventId so the
 // dispatcher can surface it as a typed ack rather than a bare world event named
 // "ack". Its tick/seq extraction is engine-side; this only pins the identity.

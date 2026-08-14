@@ -113,6 +113,13 @@ void UAsobiWebSocket::SendMatchInput(const FString& DataJson)
 	Send(TEXT("match.input"), Payload);
 }
 
+void UAsobiWebSocket::MatchFindOrCreate(const FString& Mode)
+{
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	Payload->SetStringField(TEXT("mode"), Mode);
+	Send(TEXT("match.find_or_create"), Payload);
+}
+
 void UAsobiWebSocket::JoinMatch(const FString& MatchId)
 {
 	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);

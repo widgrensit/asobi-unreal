@@ -54,6 +54,22 @@ WebSocket->OnMatchJoined.AddDynamic(this, &UMyClass::OnReady);
 
 See the [WebSocket protocol guide](https://github.com/widgrensit/asobi/blob/main/guides/websocket-protocol.md) for the full event surface.
 
+### Getting into a match
+
+`MatchFindOrCreate` puts the player into a live match of a mode, spawning one if there is none. Prefer it over `match.list` then `match.join`: browse-then-join races, so two clients reading the same empty listing each create a match. This resolves server-side and is serialised, so simultaneous callers converge on one match.
+
+```cpp
+WebSocket->MatchFindOrCreate(TEXT("arena"));
+```
+
+The reply is `match.joined`, the same frame `JoinMatch` answers with, so the `OnMatchJoined` subscription above already covers it. The call takes the mode and nothing else; every other match parameter comes from the mode's server-side config.
+
+The mode must set `quick_play = true`, which defaults to false for match modes; a mode that has not opted in is refused with `quick_play_disabled`. This is not the same axis as `listed`, which is browser visibility. Refusals also include `not_found` (the mode name is unknown or not configured, most often a typo), `match_capacity_reached` (node-wide cap), `wrong_mode_type` (a world mode) and `join_rate_limited` (the same bucket as `match.join` and `world.join`).
+
+Requires asobi server v0.86.0 or later.
+
+The world twin is `WorldFindOrCreate`.
+
 ### Guest / anonymous auth
 
 Sign in without a username by pairing a stable device id with a device secret. The secret must be the base64 of at least 32 CSPRNG bytes, generated and stored by your game (the SDK passes it through, it does not generate or persist it for you). The same `(DeviceId, DeviceSecret)` pair resumes the same guest player on a later launch; store both securely on device.

@@ -66,7 +66,7 @@ The reply is `match.joined`, the same frame `JoinMatch` answers with, so the `On
 
 The mode must set `quick_play = true`, which defaults to false for match modes; a mode that has not opted in is refused with `quick_play_disabled`. This is not the same axis as `listed`, which is browser visibility. Other refusals: `match_capacity_reached` (node-wide cap), `wrong_mode_type` (a world mode), `join_rate_limited` (the same bucket as `match.join` and `world.join`).
 
-Requires asobi server v0.85.0 or later.
+Requires asobi server v0.86.0 or later.
 
 The world twin is `WorldFindOrCreate`.
 

@@ -126,7 +126,7 @@ public:
 	// reply as JoinMatch, so OnMatchJoined covers it.
 	// The mode must set quick_play = true (match modes default to false) or the
 	// server refuses with quick_play_disabled.
-	// Requires asobi server v0.85.0 or later.
+	// Requires asobi server v0.86.0 or later.
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void MatchFindOrCreate(const FString& Mode);
 

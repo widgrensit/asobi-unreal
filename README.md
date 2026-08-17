@@ -357,6 +357,50 @@ Exactly one outcome fires, always: a call made while disconnected fails with
 code `not_connected` rather than leaving a latent node waiting forever. Branch
 on `Code`; `Message` is for humans and may be reworded at any time.
 
+## Binary `world.tick`
+
+Ask for the binary encoding and `world.tick` arrives as a WebSocket binary frame
+in roughly a fifth of the bytes, and **already decoded** - which is the real saving
+here, since `OnWorldTickPayload` hands you the payload unparsed and
+`OnWorldTick`'s fixed signature cannot carry the frame's own fields at all.
+
+```cpp
+Client->WebSocket->bRequestBinaryWire = true;
+Client->WebSocket->OnWorldTickBinary.AddLambda(
+    [](const asobi::core::WireFrame& Frame)
+{
+    // Frame.ZoneX / ZoneY, Frame.Kind, Frame.FrameSeq, Frame.Kf, Frame.Tick
+    for (const asobi::core::WireRecord& R : Frame.Records)
+    {
+        // R.Op is Add / Update / Remove, R.Id is the entity id,
+        // R.Fields holds float / int32 / bool / string / null values
+    }
+});
+Client->WebSocket->Connect(Url);
+```
+
+**C++ only, deliberately.** The decoded frame holds a per-record map of variant
+values, which has no faithful Blueprint representation; flattening it into parallel
+typed maps to satisfy the reflection system would hand Blueprint users a worse
+shape than the JSON they already have, for a saving only C++ can spend. Blueprint
+stays on `OnWorldTickPayload`, and nothing there changes.
+
+Binary frames fire `OnWorldTickBinary` and never `OnWorldTick` /
+`OnWorldTickPayload`: re-serialising a decoded frame to fire them would hand back
+exactly the text-parsing cost the binary wire exists to remove. Only `world.tick`
+is affected; everything else stays JSON text on both wires.
+
+Entity ids are 2-byte slots on the wire and the SDK resolves them, so `R.Id` is the
+same id the JSON wire gives. It is empty only when the `add` that would have
+established the binding was lost, which is a `FrameSeq` gap - call `WorldResync`
+and the keyframe rebuilds every binding.
+
+Requires the server to have `binary_wire` switched on. If it does not, you silently
+stay on text - `GrantedWire` reads `"json"` or `"binary"` once `OnConnected` has
+fired, so read it rather than assume. The same fallback happens per frame for
+anything the server cannot encode as binary, such as an entity field holding an
+array.
+
 ## Features
 
 | Subsystem | REST | WebSocket |

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "IWebSocket.h"
 #include "AsobiTypes.h"
+#include "AsobiCore/Wire.h"
 #include "AsobiWebSocket.generated.h"
 
 class UAsobiClient;
@@ -72,6 +73,16 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldTick, int64, Tick, con
 // with its own payload. Bind whichever suits you; both fire for every frame.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldTickPayload, const FString&, PayloadJson);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldAck, const FAsobiWorldAck&, Ack);
+
+// A world.tick that arrived on the binary wire, already decoded.
+//
+// A plain C++ delegate rather than a BlueprintAssignable one, deliberately. The
+// decoded frame holds a per-record map of variant values, which has no faithful
+// Blueprint representation - flattening it into parallel typed maps to satisfy the
+// reflection system would hand Blueprint users a worse shape than the JSON they
+// already have, for a saving only C++ code can spend. Blueprint stays on
+// OnWorldTickPayload; nothing there changes.
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldTickBinary, const asobi::core::WireFrame&);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldTerrain, const FAsobiWorldTerrainChunk&, Chunk);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldEvent, const FString&, Event, const FString&, PayloadJson);
 
@@ -352,6 +363,40 @@ public:
 	// Fires on a world.ack push - the highest world.input Seq the server has
 	// consumed for you as of Ack.Tick. Fires only if you stamped a Seq via
 	// WorldInputWithSeq; use it to reconcile client-side prediction.
+	/**
+	 * Every world.tick that arrived on the binary wire, decoded.
+	 *
+	 * Fires instead of OnWorldTick and OnWorldTickPayload for a connection that
+	 * set bRequestBinaryWire, and never alongside them: re-serialising a decoded
+	 * frame to fire them would hand back exactly the text-parsing cost the binary
+	 * wire exists to remove.
+	 *
+	 * The frame's entity ids are already resolved from the wire's 2-byte slots, so
+	 * Record.Id is the same id the JSON wire gives. It is empty only when the add
+	 * that would have established the binding was lost - a FrameSeq gap, which
+	 * WorldResync repairs.
+	 *
+	 * C++ only. See the delegate's own comment for why.
+	 */
+	FOnAsobiWorldTickBinary OnWorldTickBinary;
+
+	/**
+	 * Ask the server for the binary world.tick encoding: roughly a fifth of the
+	 * bytes, and already decoded rather than text the game still has to parse.
+	 *
+	 * Set it before Connect. A server with the binary wire switched off answers
+	 * `json` and this client silently stays on text, so read GrantedWire after
+	 * OnConnected rather than assuming the request was honoured. Only world.tick is
+	 * affected; every other frame is JSON text on both wires.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Asobi|WebSocket")
+	bool bRequestBinaryWire = false;
+
+	/** The wire the server actually granted: "json" or "binary". Valid after
+	 * OnConnected. */
+	UPROPERTY(BlueprintReadOnly, Category = "Asobi|WebSocket")
+	FString GrantedWire = TEXT("json");
+
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldAck OnWorldAck;
 
@@ -425,9 +470,27 @@ private:
 	bool RouteRpcReply(const FString& Type, const FString& MessageString);
 
 	void HandleMessage(const FString& MessageString);
+
+	/** Decodes one complete binary frame and broadcasts OnWorldTickBinary. */
+	void HandleBinaryFrame(const TArray<uint8>& Bytes);
+
 	FString SerializeJson(const TSharedPtr<FJsonObject>& Obj);
 
 	TSharedPtr<IWebSocket> WebSocket;
+
+	/**
+	 * Accumulates a fragmented binary frame. A world.tick fits one frame in
+	 * practice - the steady state is under a kilobyte - but nothing in the
+	 * WebSocket protocol promises that, and a decoder handed half a frame would
+	 * report it as malformed rather than wait for the rest.
+	 */
+	TArray<uint8> BinaryBuffer;
+
+	/**
+	 * Holds the slot bindings, so it lives as long as the connection. One per
+	 * socket; the bindings are established by the adds THIS connection received.
+	 */
+	TUniquePtr<asobi::core::WireDecoder> WireDecoder = MakeUnique<asobi::core::WireDecoder>();
 	int32 NextCid = 1;
 	FString LastAuthToken;
 

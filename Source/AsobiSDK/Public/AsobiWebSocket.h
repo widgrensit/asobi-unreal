@@ -60,6 +60,17 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldJoined, const FAsobiWor
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAsobiWorldLeft);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldList, const TArray<FAsobiWorldInfo>&, Worlds);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldTick, int64, Tick, const FString&, UpdatesJson);
+// The whole world.tick payload, unparsed, as a companion to FOnAsobiWorldTick.
+//
+// asobi core v0.89.0 added `zone`, `frame_seq` and `kf` to that payload, and
+// FOnAsobiWorldTick has nowhere to put them: it is a fixed two-parameter
+// signature. Widening it would change a BlueprintAssignable delegate and break
+// every Blueprint node already bound to it, which no version bump can fix here
+// because this SDK ships as copied source.
+//
+// So the fields arrive this way instead, matching what OnMatchState already does
+// with its own payload. Bind whichever suits you; both fire for every frame.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldTickPayload, const FString&, PayloadJson);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldAck, const FAsobiWorldAck&, Ack);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsobiWorldTerrain, const FAsobiWorldTerrainChunk&, Chunk);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsobiWorldEvent, const FString&, Event, const FString&, PayloadJson);
@@ -204,6 +215,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void WorldInputWithSeq(const FString& DataJson, int64 Seq);
 
+	// Ask the server to re-send one zone's complete baseline, after frames for it
+	// went missing.
+	//
+	// Call this when that zone's `frame_seq` on OnWorldTickPayload jumps by more
+	// than one. The reply is an ordinary world.tick for the zone with `kf` true,
+	// listing every entity it holds: replace that zone's entities with it rather
+	// than merging.
+	//
+	// ONE zone per call, never the whole interest ring. The ring is nine zones at
+	// the default view radius, so asking for all of them turns a small request
+	// into nine full baselines - and you already know which zone gapped, because
+	// the sequence is per zone.
+	//
+	// Rate limited server-side to twice per ten seconds per player: ask once per
+	// gap and wait for the keyframe rather than retrying. Requires asobi core
+	// v0.89.0 or later; an older server answers `unknown_type`.
+	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
+	void WorldResync(int64 ZoneX, int64 ZoneY);
+
 	// Direct messages
 	UFUNCTION(BlueprintCallable, Category = "Asobi|WebSocket")
 	void DmSend(const FString& RecipientId, const FString& Content);
@@ -287,6 +317,37 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
 	FOnAsobiWorldTick OnWorldTick;
+
+	/**
+	 * Every world.tick frame's complete payload, unparsed.
+	 *
+	 * Use this rather than OnWorldTick when you need the zone-aware fields core
+	 * v0.89.0 added, which OnWorldTick's fixed signature cannot carry:
+	 *
+	 * - `zone` as [x, y]. KEY YOUR ENTITIES ON THIS. A player is subscribed to an
+	 *   interest ring of several zones at once, each an independent server
+	 *   process, and frames from two of them have no order relative to each
+	 *   other. A crossing emits op:"r" from the zone being left and op:"a" from
+	 *   the zone being entered, so merging every zone into one entity map is
+	 *   last-writer-wins - and when the remove lands last the entity is gone for
+	 *   good, because the server will not re-add something already in its own
+	 *   baseline.
+	 * - `frame_seq`, which counts frames the zone has broadcast and never skips,
+	 *   so a jump means frames were lost. `tick` cannot serve this purpose: it
+	 *   skips on the server's broadcast interval and is suppressed entirely on a
+	 *   tick that changed nothing, so a gap in it is ambiguous. Note that
+	 *   sequence tracking cannot see the crossing problem above either - both
+	 *   zones' sequences stay perfectly contiguous through it.
+	 * - `kf`, true when the frame is a complete baseline for its zone: replace
+	 *   that zone's entities with it rather than merging. Adopt it even when
+	 *   `frame_seq` moves BACKWARDS, because a zone restart resets the sequence
+	 *   while the zone's identity does not.
+	 *
+	 * Ask for a fresh baseline with UAsobiWebSocket::WorldResync when a zone's
+	 * frame_seq jumps.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Asobi|WebSocket")
+	FOnAsobiWorldTickPayload OnWorldTickPayload;
 
 	// Fires on a world.ack push - the highest world.input Seq the server has
 	// consumed for you as of Ack.Tick. Fires only if you stamped a Seq via

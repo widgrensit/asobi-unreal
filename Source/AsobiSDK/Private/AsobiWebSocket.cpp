@@ -2,6 +2,7 @@
 #include "AsobiClient.h"
 #include "AsobiCore/Protocol.h"
 #include "WebSocketsModule.h"
+#include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -252,6 +253,19 @@ void UAsobiWebSocket::WorldInput(const FString& DataJson)
 void UAsobiWebSocket::WorldInputWithSeq(const FString& DataJson, int64 Seq)
 {
 	SendWorldInput(DataJson, TOptional<int64>(Seq));
+}
+
+void UAsobiWebSocket::WorldResync(int64 ZoneX, int64 ZoneY)
+{
+	// The coords go as a JSON array of two numbers, matching the `zone` shape the
+	// server puts on world.tick and world.terrain, so a caller echoes back the
+	// value it was given rather than constructing one.
+	TArray<TSharedPtr<FJsonValue>> Zone;
+	Zone.Add(MakeShareable(new FJsonValueNumber(static_cast<double>(ZoneX))));
+	Zone.Add(MakeShareable(new FJsonValueNumber(static_cast<double>(ZoneY))));
+	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
+	Payload->SetArrayField(TEXT("zone"), Zone);
+	Send(TEXT("world.resync"), Payload);
 }
 
 void UAsobiWebSocket::DmSend(const FString& RecipientId, const FString& Content)
@@ -709,6 +723,12 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 			}
 		}
 		OnWorldTick.Broadcast(Tick, UpdatesJson);
+		// The zone-aware fields core v0.89.0 added (`zone`, `frame_seq`, `kf`)
+		// have nowhere to go in OnWorldTick's fixed two-parameter signature, and
+		// widening a BlueprintAssignable delegate would break every Blueprint
+		// already bound to it. They ride the whole payload instead, the way
+		// OnMatchState already delivers its own.
+		OnWorldTickPayload.Broadcast(PayloadStr);
 		break;
 	}
 	case EventId::WorldTerrain:

@@ -1,6 +1,7 @@
 #include "AsobiWebSocket.h"
 #include "AsobiClient.h"
 #include "AsobiCore/Protocol.h"
+#include "AsobiCore/Wire.h"
 #include "WebSocketsModule.h"
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
@@ -54,6 +55,22 @@ void UAsobiWebSocket::Connect(const FString& Url)
 		HandleMessage(Message);
 	});
 
+	// Only world.tick ever arrives as binary; everything else is JSON text on both
+	// wires. Without this the frame is delivered nowhere at all - OnMessage never
+	// sees a binary frame - which is the kind of silent failure an SDK author spends
+	// an afternoon on.
+	WebSocket->OnBinaryMessage().AddLambda(
+		[this](const void* Data, SIZE_T Size, bool bIsLastFragment)
+	{
+		BinaryBuffer.Append(static_cast<const uint8*>(Data), static_cast<int32>(Size));
+		if (!bIsLastFragment)
+		{
+			return;
+		}
+		HandleBinaryFrame(BinaryBuffer);
+		BinaryBuffer.Reset();
+	});
+
 	WebSocket->Connect();
 }
 
@@ -75,7 +92,28 @@ void UAsobiWebSocket::Authenticate(const FString& Token)
 	LastAuthToken = Token;
 	TSharedPtr<FJsonObject> Payload = MakeShareable(new FJsonObject);
 	Payload->SetStringField(TEXT("token"), Token);
+	// Added only when asked for, so a caller who never touches bRequestBinaryWire
+	// sends the exact frame it always sent.
+	if (bRequestBinaryWire)
+	{
+		Payload->SetStringField(TEXT("wire"), TEXT("binary"));
+	}
 	Send(TEXT("session.connect"), Payload);
+}
+
+// A binary frame is a world.tick and nothing else. Decoded here and broadcast on
+// OnWorldTickBinary; a malformed one is dropped with a warning rather than
+// half-applied, because losing one frame costs a frame_seq gap that WorldResync
+// repairs while guessing at it would corrupt the caller's entity map silently.
+void UAsobiWebSocket::HandleBinaryFrame(const TArray<uint8>& Bytes)
+{
+	const auto Frame = WireDecoder->Decode(Bytes.GetData(), static_cast<size_t>(Bytes.Num()));
+	if (!Frame.has_value())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Asobi: dropped a malformed binary world.tick frame"));
+		return;
+	}
+	OnWorldTickBinary.Broadcast(*Frame);
 }
 
 void UAsobiWebSocket::Reauthenticate(const FString& NewToken)
@@ -491,6 +529,21 @@ void UAsobiWebSocket::HandleMessage(const FString& MessageString)
 	switch (*Id)
 	{
 	case EventId::SessionConnected:
+		// Record the wire the server GRANTED, which is not always the one
+		// requested: a server with the binary wire off answers "json". Read it
+		// rather than infer it from the opcode of the first frame to arrive.
+		if (PayloadObj && PayloadObj->IsValid())
+		{
+			FString Granted;
+			if ((*PayloadObj)->TryGetStringField(TEXT("wire"), Granted))
+			{
+				GrantedWire = Granted;
+			}
+		}
+		// Otherwise surfaced only via the raw OnMessage above — matches the
+		// per-SDK contract (love2d, godot, etc).
+		break;
+
 	case EventId::SessionHeartbeat:
 		// Intentionally surfaced only via the raw OnMessage above —
 		// matches the per-SDK contract (love2d, godot, etc).

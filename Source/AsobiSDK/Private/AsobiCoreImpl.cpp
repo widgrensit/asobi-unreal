@@ -8,3 +8,4 @@
 #include "../../AsobiCore/Private/Auth.cpp"
 #include "../../AsobiCore/Private/Json.cpp"
 #include "../../AsobiCore/Private/Protocol.cpp"
+#include "../../AsobiCore/Private/Wire.cpp"

@@ -27,6 +27,7 @@ add_library(AsobiCore STATIC
     Private/Auth.cpp
     Private/Json.cpp
     Private/Protocol.cpp
+    Private/Wire.cpp
 )
 target_include_directories(AsobiCore PUBLIC Public)
 
@@ -71,3 +72,16 @@ target_include_directories(asobi_core_world_input_test PRIVATE Vendor)
 
 add_test(NAME asobi_core_world_input
          COMMAND asobi_core_world_input_test)
+
+# The binary world.tick decoder, against asobi's own committed fixture corpus.
+add_executable(asobi_core_wire_test
+    Tests/WireTest.cpp
+)
+target_link_libraries(asobi_core_wire_test PRIVATE AsobiCore)
+target_include_directories(asobi_core_wire_test PRIVATE Vendor)
+target_compile_definitions(asobi_core_wire_test PRIVATE
+    "ASOBI_CORE_FIXTURE_DIR=\"${_asobi_fixture_dir}\""
+)
+
+add_test(NAME asobi_core_wire
+         COMMAND asobi_core_wire_test)

@@ -360,7 +360,7 @@ on `Code`; `Message` is for humans and may be reworded at any time.
 ## Binary `world.tick`
 
 Ask for the binary encoding and `world.tick` arrives as a WebSocket binary frame
-in roughly a fifth of the bytes, and **already decoded** - which is the real saving
+in about a quarter of the bytes, and **already decoded** - which is the real saving
 here, since `OnWorldTickPayload` hands you the payload unparsed and
 `OnWorldTick`'s fixed signature cannot carry the frame's own fields at all.
 

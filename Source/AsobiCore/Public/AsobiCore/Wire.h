@@ -1,6 +1,6 @@
 // AsobiCore — the binary world.tick decoder (asobi ADR 0013).
 //
-// Same information as the JSON frame in roughly a fifth of the bytes, and it
+// Same information as the JSON frame in about a quarter of the bytes, and it
 // arrives already typed rather than as text the game still has to parse. That is
 // the real saving on this SDK: OnWorldTickPayload hands you the payload unparsed
 // and OnWorldTick's fixed signature cannot carry the frame's own fields at all.

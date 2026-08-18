@@ -381,7 +381,7 @@ public:
 	FOnAsobiWorldTickBinary OnWorldTickBinary;
 
 	/**
-	 * Ask the server for the binary world.tick encoding: roughly a fifth of the
+	 * Ask the server for the binary world.tick encoding: about a quarter of the
 	 * bytes, and already decoded rather than text the game still has to parse.
 	 *
 	 * Set it before Connect. A server with the binary wire switched off answers

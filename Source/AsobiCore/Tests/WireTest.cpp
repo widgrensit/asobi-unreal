@@ -75,6 +75,7 @@ TEST_CASE("an add carries every value type, and the binding")
     const WireRecord& R = Frame->Records[0];
     CHECK(R.Op == WireOp::Add);
     CHECK(R.Id == "01a0115f-547e-714f-829f-408c855ab77b");
+    CHECK(R.Gen == 0);
     CHECK(std::get<float>(R.Fields.at("x")) == doctest::Approx(12.5f));
     CHECK(std::get<float>(R.Fields.at("y")) == doctest::Approx(-3.25f));
     CHECK(std::get<std::int32_t>(R.Fields.at("hp")) == 100);
@@ -115,10 +116,15 @@ TEST_CASE("a keyframe carries every binding")
     REQUIRE(Frame.has_value());
     CHECK(Frame->Kf == true);
     REQUIRE(Frame->Records.size() == 5);
+    // The corpus gives every record in this frame a DIFFERENT generation, so a
+    // decoder reading the byte from the wrong offset cannot pass by accident.
+    std::uint8_t Expected = 1;
     for (const WireRecord& R : Frame->Records)
     {
         CHECK(R.Op == WireOp::Add);
         CHECK(!R.Id.empty());
+        CHECK(R.Gen == Expected);
+        ++Expected;
     }
 }
 
@@ -166,6 +172,7 @@ TEST_CASE("the leave-removal frame is ungated, not sequence zero")
     CHECK(Frame->Kind == WireKind::Ungated);
     REQUIRE(Frame->Records.size() == 2);
     CHECK(Frame->Records[0].Op == WireOp::Remove);
+    CHECK(Frame->Records[0].Gen == 255);
 }
 
 // An empty zone still has a sequence position. A decoder treating zero records as

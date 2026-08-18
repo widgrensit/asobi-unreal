@@ -122,7 +122,7 @@ std::optional<WireFrame> WireDecoder::Decode(const std::uint8_t* B, std::size_t 
     Frame.Records.reserve(RecCount);
     for (std::size_t R = 0; R < RecCount; ++R)
     {
-        if (Pos + 3 > Len)
+        if (Pos + 4 > Len)
         {
             return std::nullopt;
         }
@@ -132,10 +132,12 @@ std::optional<WireFrame> WireDecoder::Decode(const std::uint8_t* B, std::size_t 
             return std::nullopt;
         }
         const std::uint16_t Slot = ReadU16(B, Pos + 1);
-        Pos += 3;
+        const std::uint8_t Gen = B[Pos + 3];
+        Pos += 4;
 
         WireRecord Record;
         Record.Op = OpByte == 0 ? WireOp::Add : (OpByte == 1 ? WireOp::Update : WireOp::Remove);
+        Record.Gen = Gen;
 
         if (Record.Op == WireOp::Add)
         {

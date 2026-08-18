@@ -16,7 +16,7 @@
 //   frame    Kind:8, ZX:32, ZY:32, FrameSeq:64, Kf:8, Tick:64,
 //            DictLen:8, Dict, RecCount:16, Records
 //   dict     for each name: Len:8, Name/utf8            (at most 32 names)
-//   record   Op:8, Slot:16, [IdLen:8, Id/utf8]?, FieldCount:8, Fields
+//   record   Op:8, Slot:16, Gen:8, [IdLen:8, Id/utf8]?, FieldCount:8, Fields
 //   field    Type:3, Idx:5, Value                       (one header byte)
 //
 // Mirrors:
@@ -69,6 +69,12 @@ struct WireRecord
     // because the frame genuinely says this slot changed; the frame_seq gap that
     // caused it is what drives the resync that repairs the mapping.
     std::string Id;
+
+    // The slot's generation, advancing every time it is rebound to a different
+    // entity. Redundant on this ordered, reliable wire - the sequencing already
+    // bounds the reuse hazard - and carried anyway so a client also running the
+    // datagram plane can keep ONE slot table for both carriers.
+    std::uint8_t Gen = 0;
 
     std::map<std::string, WireValue> Fields;
 };
